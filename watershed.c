@@ -11,16 +11,24 @@ typedef double h_t;
 #define SIZE 256
 #define ZOOM 2
 
-#define RAIN 0.0002
-#define DEPTH_SCALE 0.028
-const h_t DEPTH = DEPTH_SCALE * SIZE;
-/* DEPTH * DECAY + RAIN == DEPTH
-   DECAY + RAIN/DEPTH = 1
-   DECAY = 1 - RAIN/DEPTH */
-const h_t DECAY = 1.0 - RAIN/DEPTH;
+#define WATER_LOAD 0.028
 
-#define TIDE_AMP 0.05*SIZE
+#define TEMP_ALT 1.0
+#define LAT_POLE 0.0
+#define LAT_TILT 0.015
+#define YEAR_LEN 2000
+
+#define VAP_DIFF 5
+#define WIND_SP 0.5
+
+#define VAP_STD 0.002
+#define VAP_TEMP 0.5
+#define VAP_EXCHG 0.25
+
+#define TIDE_AMP 0.1
 #define TIDE_RATE 0.15
+
+
 
 /* mod x to SIZE, handling negative values correctly */
 #define MOD(x) ((x+SIZE) % SIZE)
@@ -34,6 +42,10 @@ typedef struct {
   grid water;
   grid tide;
   grid flow;
+  grid temperature;
+  grid latitude;
+  grid vapor;
+  grid rain;
   grid buffer;
 } state_t;
 
@@ -74,7 +86,8 @@ void init_state() {
   generate_land(state.land);
   for (FOR(x,1)) {
     for (FOR(y,1)) {
-      state.water[x][y] = DEPTH;
+      state.water[x][y] = WATER_LOAD * SIZE;
+      state.latitude[x][y] = cos(x * M_PI * 2 / SIZE) + cos(y * M_PI * 2 / SIZE);
     }
   }
 }
@@ -107,7 +120,7 @@ void flow_water() {
   memset(state.flow, 0, sizeof(h_t)*SIZE*SIZE);
   for (FOR(x,1)) {
     for (FOR(y,1)) {
-      state.tide[x][y] = TIDE_AMP * sin((x + t*TIDE_RATE) * M_PI * 2 / SIZE);
+      state.tide[x][y] = TIDE_AMP*SIZE * sin((x + t*TIDE_RATE) * M_PI * 2 / SIZE);
     }
   }
 
@@ -132,15 +145,72 @@ void flow_water() {
 	  }
 	}
       }
-      
-      state.water[x][y] *= DECAY;
-      state.water[x][y] += RAIN;
+    }
+  }
+}
+
+void update_temperature() {
+  for (FOR(x,1)) {
+    for (FOR(y,1)) {
+      state.temperature[x][y] = (
+				 -(state.land[x][y]+state.water[x][y])*TEMP_ALT/SIZE +
+				 -state.latitude[x][y]*state.latitude[x][y]*LAT_POLE +
+				 state.latitude[x][y]*sin((double)t * M_PI * 2 / YEAR_LEN)*LAT_TILT
+				 );
+    }
+  }  
+}
+
+void exchange_vapor() {
+  for (FOR(x,1)) {
+    for (FOR(y,1)) {
+      h_t eq_vap = VAP_STD * SIZE * exp(VAP_TEMP * state.temperature[x][y]);
+      h_t rain = VAP_EXCHG * (state.vapor[x][y] - eq_vap);
+      rain = (rain > state.vapor[x][y]) ? state.vapor[x][y] : rain;
+      rain = (rain < -state.water[x][y]) ? -state.water[x][y] : rain;
+      state.water[x][y] += rain;
+      state.vapor[x][y] -= rain;
+      state.rain[x][y] = rain;
+    }
+  }  
+}
+
+void diffuse_vapor() {
+  memcpy(state.buffer, state.vapor, sizeof(h_t)*SIZE*SIZE);
+
+  for (FOR(x,1)) {
+    for (FOR(y,1)) {
+
+      state.vapor[x][y] = state.buffer[x][y] * (((h_t)VAP_DIFF - 4) / (h_t)VAP_DIFF);
+
+      for (int dx = -1; dx <= 1; dx++) {
+	for (int dy = -1; dy <= 1; dy++) {
+	  if (!dx != !dy) { //XOR
+	    state.vapor[x][y] += state.buffer[MOD(x+dx)][MOD(y+dy)] / VAP_DIFF;
+	  }
+	}
+      }
+    }
+  }
+
+  if (WIND_SP != 0) {
+    int wdir = (WIND_SP > 0) - (WIND_SP < 0);
+
+    memcpy(state.buffer, state.vapor, sizeof(h_t)*SIZE*SIZE);
+
+    for (FOR(x,1)) {
+      for (FOR(y,1)) {
+	state.vapor[x][y] = WIND_SP * state.buffer[MOD(x+wdir)][y] + (1.0 - WIND_SP) * state.buffer[x][y];
+      }
     }
   }
 }
 
 void update_state() {
   flow_water();
+  update_temperature();
+  exchange_vapor();
+  diffuse_vapor();
   t += 1;
 }
 
