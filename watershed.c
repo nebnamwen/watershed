@@ -11,24 +11,22 @@ typedef double h_t;
 #define SIZE 256
 #define ZOOM 2
 
-#define WATER_LOAD 0.028
+#define SEA_LEVEL 0.04
 
-#define TEMP_ALT 1.0
-#define LAT_POLE 0.0
-#define LAT_TILT 0.015
-#define YEAR_LEN 2000
+#define TEMP_ALT 0.95
+#define LAT_POLE 0.00
+#define LAT_TILT 0.00
+#define YEAR_LEN 1500
 
-#define VAP_DIFF 5
-#define WIND_SP 0.5
+#define VAP_DIFF 6
+#define WIND_SP 0.015
 
-#define VAP_STD 0.002
-#define VAP_TEMP 0.5
-#define VAP_EXCHG 0.25
+#define VAP_STD 0.01
+#define VAP_TEMP 1.0
+#define VAP_EXCHG 0.075
 
-#define TIDE_AMP 0.1
+#define TIDE_AMP 0.15
 #define TIDE_RATE 0.15
-
-
 
 /* mod x to SIZE, handling negative values correctly */
 #define MOD(x) ((x+SIZE) % SIZE)
@@ -50,7 +48,13 @@ typedef struct {
 } state_t;
 
 long int t = 0;
+int vx = 0;
+int vy = 0;
 state_t state;
+
+h_t equilibrium_vapor(h_t temp) {
+  return VAP_STD * SIZE * exp(VAP_TEMP * temp);
+}
 
 void generate_land_point(grid g, int x, int y, int du, int dv) {
   h_t average = (
@@ -65,6 +69,7 @@ void generate_land_point(grid g, int x, int y, int du, int dv) {
 
 void generate_land(grid g) {
   srand(time(NULL));
+  rand();
 
   for (int Dx = SIZE; Dx > 1; Dx /= 2) {
     int dx = Dx/2;
@@ -82,12 +87,31 @@ void generate_land(grid g) {
   }
 }
 
+void update_temperature() {
+  for (FOR(x,1)) {
+    for (FOR(y,1)) {
+      state.temperature[x][y] = (
+				 -(state.land[x][y]+state.water[x][y])*TEMP_ALT/SIZE +
+				 -state.latitude[x][y]*state.latitude[x][y]*LAT_POLE +
+				 state.latitude[x][y]*sin((double)t * M_PI * 2 / YEAR_LEN)*LAT_TILT
+				 );
+    }
+  }  
+}
+
 void init_state() {
   generate_land(state.land);
   for (FOR(x,1)) {
     for (FOR(y,1)) {
-      state.water[x][y] = WATER_LOAD * SIZE;
+      state.water[x][y] = SEA_LEVEL * SIZE - state.land[x][y];
+      state.water[x][y] *= state.water[x][y] > 0;
       state.latitude[x][y] = cos(x * M_PI * 2 / SIZE) + cos(y * M_PI * 2 / SIZE);
+    }
+  }
+  update_temperature();
+  for (FOR(x,1)) {
+    for (FOR(y,1)) {
+      state.vapor[x][y] = equilibrium_vapor(state.temperature[x][y]);
     }
   }
 }
@@ -149,22 +173,10 @@ void flow_water() {
   }
 }
 
-void update_temperature() {
-  for (FOR(x,1)) {
-    for (FOR(y,1)) {
-      state.temperature[x][y] = (
-				 -(state.land[x][y]+state.water[x][y])*TEMP_ALT/SIZE +
-				 -state.latitude[x][y]*state.latitude[x][y]*LAT_POLE +
-				 state.latitude[x][y]*sin((double)t * M_PI * 2 / YEAR_LEN)*LAT_TILT
-				 );
-    }
-  }  
-}
-
 void exchange_vapor() {
   for (FOR(x,1)) {
     for (FOR(y,1)) {
-      h_t eq_vap = VAP_STD * SIZE * exp(VAP_TEMP * state.temperature[x][y]);
+      h_t eq_vap = equilibrium_vapor(state.temperature[x][y]);
       h_t rain = VAP_EXCHG * (state.vapor[x][y] - eq_vap);
       rain = (rain > state.vapor[x][y]) ? state.vapor[x][y] : rain;
       rain = (rain < -state.water[x][y]) ? -state.water[x][y] : rain;
@@ -214,25 +226,50 @@ void update_state() {
   t += 1;
 }
 
-void render_state() {
+#define PAL_ALT 0
+#define PAL_BIOME 1
+#define PAL_FLOW 2
+
+void render_state(int pal) {
   for (FOR(x,1)) {
     for (FOR(y,1)) {
       h_t water_scaled = state.water[x][y]/SIZE;
       h_t water_alpha = exp(-state.water[x][y]*35);
-      h_t scaled = atan(state.land[x][y]*2 / SIZE) / M_PI + 0.5;
+      h_t greenery_alpha = exp(-state.water[x][y]*250);
+      h_t scaled_alt = atan(state.land[x][y]*2 / SIZE) / M_PI + 0.5;
       h_t light = atan(
 			(state.land[x][y]+state.water[x][y])-
 			(state.land[x][MOD(y-1)]+state.water[x][MOD(y-1)])
-			) / M_PI + 0.5;
+			) / M_PI * 0.9 + 0.5 + 0.1;
+      h_t flow = atan(state.flow[x][y] * 35) / M_PI;
       unsigned char color[3];
-      /* blue */  color[0] = (unsigned char)((1 - water_alpha)*light * 255);
-      /* green */ color[1] = (unsigned char)((1-scaled)*water_alpha*light * 255);
-      /* red */   color[2] = (unsigned char)(scaled*water_alpha*light * 255);
+
+      switch(pal) {
+
+      case PAL_ALT:
+	/* blue */  color[0] = (unsigned char)((1 - water_alpha)*light * 255);
+	/* green */ color[1] = (unsigned char)((1 - scaled_alt)*water_alpha*light * 255);
+	/* red */   color[2] = (unsigned char)(scaled_alt*water_alpha*light * 255);
+	break;
+
+      case PAL_BIOME:
+	/* blue */  color[0] = (unsigned char)((1 - 0.9*water_alpha)*light * 255);
+	/* green */ color[1] = (unsigned char)((1 - 0.8*greenery_alpha)*water_alpha*light * 255);
+	/* red */   color[2] = (unsigned char)(0.45*greenery_alpha*water_alpha*light * 255);
+	break;
+
+      case PAL_FLOW:
+	/* blue */  color[0] = (unsigned char)((1 - water_alpha + 0.2*light*water_alpha) * 255);
+	/* green */ color[1] = (unsigned char)(0.2*water_alpha*light * 255);
+	/* red */   color[2] = (unsigned char)(((1 - water_alpha)*flow + 0.2*light*water_alpha) * 255);
+	break;
+
+      }
 
       for (int zx = 0; zx < ZOOM; zx++) {
 	for (int zy = 0; zy < ZOOM; zy++) {
 	  for (int rgb = 0; rgb < 3; rgb++) {
-	    pixels[y*ZOOM+zy][x*ZOOM+zx][rgb] = color[rgb];
+	    pixels[MOD(y-vy)*ZOOM+zy][MOD(x-vx)*ZOOM+zx][rgb] = color[rgb];
 	  }
 	}
       }
@@ -251,6 +288,7 @@ int main(int argc, char* argv[])
 {
   int pause = 0;
   int quit = 0;
+  int pal = PAL_ALT;
 
   clock_t ct = clock();
   init_state();
@@ -272,6 +310,27 @@ int main(int argc, char* argv[])
 	case SDLK_p:
 	  pause = !pause;
 	  break;
+	case SDLK_a:
+	  pal = PAL_ALT;
+	  break;
+	case SDLK_s:
+	  pal = PAL_BIOME;
+	  break;
+	case SDLK_d:
+	  pal = PAL_FLOW;
+	  break;
+	case SDLK_UP:
+	  vy = MOD(vy-1);
+	  break;
+	case SDLK_DOWN:
+	  vy = MOD(vy+1);
+	  break;
+	case SDLK_LEFT:
+	  vx = MOD(vx-1);
+	  break;
+	case SDLK_RIGHT:
+	  vx = MOD(vx+1);
+	  break;
 	}
 	break;
       default:
@@ -286,7 +345,7 @@ int main(int argc, char* argv[])
       update_state();
     }
 
-    render_state();
+    render_state(pal);
     render_to_screen();
 
     // printf("%lu\n", (clock() - ct) * 1000 / CLOCKS_PER_SEC);
