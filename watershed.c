@@ -13,6 +13,8 @@ typedef double h_t;
 
 #define SEA_LEVEL 0.04
 
+#define G_ALT 1.5
+
 #define TEMP_ALT 0.95
 #define LAT_POLE 0.00
 #define LAT_TILT 0.00
@@ -25,7 +27,7 @@ typedef double h_t;
 #define VAP_TEMP 1.0
 #define VAP_EXCHG 0.075
 
-#define TIDE_AMP 0.15
+#define TIDE_AMP 0.10
 #define TIDE_RATE 0.15
 
 /* mod x to SIZE, handling negative values correctly */
@@ -39,7 +41,12 @@ typedef struct {
   grid land;
   grid water;
   grid tide;
-  grid flow;
+  grid xflow;
+  grid yflow;
+  grid xmoment;
+  grid ymoment;
+  grid xmombuf;
+  grid ymombuf;
   grid temperature;
   grid latitude;
   grid vapor;
@@ -108,6 +115,7 @@ void init_state() {
       state.latitude[x][y] = cos(x * M_PI * 2 / SIZE) + cos(y * M_PI * 2 / SIZE);
     }
   }
+  // state.water[SIZE/2][SIZE/2] = SIZE;
   update_temperature();
   for (FOR(x,1)) {
     for (FOR(y,1)) {
@@ -141,7 +149,8 @@ void teardown_sdl_stuff() {
 
 void flow_water() {
   memcpy(state.buffer, state.water, sizeof(h_t)*SIZE*SIZE);
-  memset(state.flow, 0, sizeof(h_t)*SIZE*SIZE);
+  memset(state.xflow, 0, sizeof(h_t)*SIZE*SIZE);
+  memset(state.yflow, 0, sizeof(h_t)*SIZE*SIZE);
   for (FOR(x,1)) {
     for (FOR(y,1)) {
       state.tide[x][y] = TIDE_AMP*SIZE * sin((x + t*TIDE_RATE) * M_PI * 2 / SIZE);
@@ -154,19 +163,88 @@ void flow_water() {
       for (int dx = -1; dx <= 1; dx++) {
 	for (int dy = -1; dy <= 1; dy++) {
 	  if (!dx != !dy) { //XOR
+	    // calculate diffuse flow contribution
 	    h_t f = (
 		     (state.land[x][y]+state.tide[x][y]+state.buffer[x][y])-
 		     (state.land[MOD(x+dx)][MOD(y+dy)]+state.tide[MOD(x+dx)][MOD(y+dy)]+state.buffer[MOD(x+dx)][MOD(y+dy)])
 		     ) / 5;
+	    // momentum contribution
+	    if (state.xmoment[x][y] * dx > 0) { f += state.xmoment[x][y] * dx; }
+	    if (state.ymoment[x][y] * dy > 0) { f += state.ymoment[x][y] * dy; }
 	    if (f > 0) {
-	      h_t mf = state.buffer[x][y] / 4;
+	      h_t mf = state.buffer[x][y] / 5;
 	      f = f <= mf ? f : mf;
 
-	      state.water[x][y] -= f;
-	      state.water[MOD(x+dx)][MOD(y+dy)] += f;
-	      state.flow[x][y] += f;
+	      // state.water[x][y] -= f;
+	      // state.water[MOD(x+dx)][MOD(y+dy)] += f;
+	      state.xflow[MOD(x+(dx-1)/2)][y] += f * dx;
+	      state.yflow[x][MOD(y+(dy-1)/2)] += f * dy;
 	    }
 	  }
+	}
+      }
+    }
+  }
+
+  // apply flow to calculate new water level
+  for (FOR(x,1)) {
+    for (FOR(y,1)) {
+      state.water[x][y] -= state.xflow[x][y] + state.yflow[x][y];
+      state.water[MOD(x+1)][MOD(y)] += state.xflow[x][y];
+      state.water[MOD(x)][MOD(y+1)] += state.yflow[x][y];
+    }
+  }
+
+  // calculate momentum changes
+  memcpy(state.xmombuf, state.xmoment, sizeof(h_t)*SIZE*SIZE);
+  memcpy(state.ymombuf, state.ymoment, sizeof(h_t)*SIZE*SIZE);
+  for (FOR(x,1)) {
+    for (FOR(y,1)) {
+      for (int du = -1; du <= 1; du += 2) {
+	h_t drop;
+	drop = state.xflow[x][y] * du;
+	if (drop > 0) {
+	  int fromx = du > 0 ? x : MOD(x+1);
+	  int tox = du > 0 ? MOD(x+1) : x;
+
+	  h_t drop_xmom = state.xmombuf[fromx][y] * drop/state.buffer[fromx][y];
+	  h_t drop_ymom = state.ymombuf[fromx][y] * drop/state.buffer[fromx][y];
+
+	  h_t fromh = state.land[fromx][y] + state.tide[fromx][y] + state.buffer[fromx][y];
+	  h_t toh = state.land[tox][y] + state.tide[tox][y] + state.water[tox][y];
+	  h_t dh = (toh - fromh) * G_ALT / SIZE;
+
+	  h_t new_drop_xmom = drop_xmom - drop * dh * du;
+
+	  if (x == 0 && y == 0) {
+	    printf("%i: (%f) %f =(%f)=> %f\n", du, drop, drop_xmom, dh, new_drop_xmom);
+	  }
+
+	  state.xmoment[fromx][y] -= drop_xmom;
+	  state.xmoment[tox][y] += new_drop_xmom;
+
+	  state.ymoment[fromx][y] -= drop_ymom;
+	  state.ymoment[tox][y] += drop_ymom;
+	}
+	drop = state.yflow[x][y] * du;
+	if (drop > 0) {
+	  int fromy = du > 0 ? y : MOD(y+1);
+	  int toy = du > 0 ? MOD(y+1) : y;
+
+	  h_t drop_xmom = state.xmombuf[x][fromy] * drop/state.buffer[x][fromy];
+	  h_t drop_ymom = state.ymombuf[x][fromy] * drop/state.buffer[x][fromy];
+
+	  h_t fromh = state.land[x][fromy] + state.tide[x][fromy] + state.buffer[x][fromy];
+	  h_t toh = state.land[x][toy] + state.tide[x][toy] + state.water[x][toy];
+	  h_t dh = (toh - fromh) * G_ALT / SIZE;
+
+	  h_t new_drop_ymom = drop_ymom - drop * dh * du;
+
+	  state.xmoment[x][fromy] -= drop_xmom;
+	  state.xmoment[x][toy] += drop_xmom;
+
+	  state.ymoment[x][fromy] -= drop_ymom;
+	  state.ymoment[x][toy] += new_drop_ymom;
 	}
       }
     }
@@ -180,6 +258,11 @@ void exchange_vapor() {
       h_t rain = VAP_EXCHG * (state.vapor[x][y] - eq_vap);
       rain = (rain > state.vapor[x][y]) ? state.vapor[x][y] : rain;
       rain = (rain < -state.water[x][y]) ? -state.water[x][y] : rain;
+      if (rain < 0) {
+	h_t evap_ratio = (state.water[x][y] + rain) / state.water[x][y];
+	state.xmoment[x][y] *= evap_ratio;
+	state.ymoment[x][y] *= evap_ratio;
+      }
       state.water[x][y] += rain;
       state.vapor[x][y] -= rain;
       state.rain[x][y] = rain;
@@ -229,6 +312,7 @@ void update_state() {
 #define PAL_ALT 0
 #define PAL_BIOME 1
 #define PAL_FLOW 2
+#define PAL_MOMENT 3
 
 void render_state(int pal) {
   for (FOR(x,1)) {
@@ -241,7 +325,9 @@ void render_state(int pal) {
 			(state.land[x][y]+state.water[x][y])-
 			(state.land[x][MOD(y-1)]+state.water[x][MOD(y-1)])
 			) / M_PI * 0.9 + 0.5 + 0.1;
-      h_t flow = atan(state.flow[x][y] * 35) / M_PI;
+      h_t flow = atan((fabs(state.xflow[x][y]) + fabs(state.yflow[x][y])) * 35) / M_PI;
+      h_t xmoment = atan(state.xmoment[x][y] * 50 / state.water[x][y]) / M_PI + 0.5;
+      h_t ymoment = atan(state.ymoment[x][y] * 50 / state.water[x][y]) / M_PI + 0.5;
       unsigned char color[3];
 
       switch(pal) {
@@ -262,6 +348,12 @@ void render_state(int pal) {
 	/* blue */  color[0] = (unsigned char)((1 - water_alpha + 0.2*light*water_alpha) * 255);
 	/* green */ color[1] = (unsigned char)(0.2*water_alpha*light * 255);
 	/* red */   color[2] = (unsigned char)(((1 - water_alpha)*flow + 0.2*light*water_alpha) * 255);
+	break;
+
+      case PAL_MOMENT:
+	/* blue */  color[0] = (unsigned char)(((1 - water_alpha)*ymoment + 0.2*light*water_alpha) * 255);
+	/* green */ color[1] = (unsigned char)(0.2*water_alpha*light * 255);
+	/* red */   color[2] = (unsigned char)(((1 - water_alpha)*xmoment + 0.2*light*water_alpha) * 255);
 	break;
 
       }
@@ -318,6 +410,9 @@ int main(int argc, char* argv[])
 	  break;
 	case SDLK_d:
 	  pal = PAL_FLOW;
+	  break;
+	case SDLK_f:
+	  pal = PAL_MOMENT;
 	  break;
 	case SDLK_UP:
 	  vy = MOD(vy-1);
