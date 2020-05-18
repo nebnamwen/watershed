@@ -11,7 +11,10 @@ typedef double h_t;
 #define SIZE 256
 #define ZOOM 2
 
-#define SEA_LEVEL 0.04
+/* mod x to SIZE, handling negative values correctly */
+#define MOD(x) ((x+SIZE) % SIZE)
+#define FOR_V(x,dx) int x = 0; x < SIZE; x += dx
+#define FOR(x) FOR_V(x,1)
 
 #define G_ALT 1.5
 #define CLAMP 0.15
@@ -31,11 +34,6 @@ typedef double h_t;
 
 #define TIDE_AMP 0.01
 #define TIDE_RATE 0.5
-
-/* mod x to SIZE, handling negative values correctly */
-#define MOD(x) ((x+SIZE) % SIZE)
-
-#define FOR(x,dx) int x = 0; x < SIZE; x += dx
 
 typedef h_t grid[SIZE][SIZE];
 
@@ -61,40 +59,68 @@ h_t equilibrium_vapor(h_t temp) {
   return VAP_STD * SIZE * exp(VAP_TEMP * temp);
 }
 
-void generate_land_point(grid g, int x, int y, int du, int dv) {
-  h_t average = (
-		 g[MOD(x+du)][MOD(y+dv)] +
-		 g[MOD(x-du)][MOD(y-dv)] +
-		 g[MOD(x+dv)][MOD(y-du)] +
-		 g[MOD(x-dv)][MOD(y+du)]
-		 ) / 4.0;
-  h_t displacement = sin(((h_t)rand()/(h_t)RAND_MAX - 0.5) * M_PI) / 2;
-  g[x][y] = average + displacement * sqrt(du*du + dv*dv);
+#define SEED_OCTAVES 4
+#define BASE_ALT 0.0
+#define SKEW 0.5
+#define ALT_SCALE 1.0
+
+void generate_land_point(grid g, int x, int y, int octave) {
+  h_t base = BASE_ALT;
+  h_t skew = 0.0;
+
+  octave = (octave <= SEED_OCTAVES) ? SEED_OCTAVES : octave;
+
+  int du = SIZE >> ((octave + 1)/2);
+  int dv = du * (octave % 2);
+
+  if (octave > SEED_OCTAVES) {
+    h_t a = g[MOD(x+du)][MOD(y+dv)];
+    h_t b = g[MOD(x+du)][MOD(y-dv)];
+    h_t c = g[MOD(x-du)][MOD(y-dv)];
+    h_t d = g[MOD(x-dv)][MOD(y+du)];
+
+    base = (a + b + c + d) / 4.0;
+    skew = cbrt(
+		pow(a - base, 3) +
+		pow(b - base, 3) +
+		pow(c - base, 3) +
+		pow(d - base, 3)
+		) / 4.0;
+  }
+
+  h_t noise = (h_t)rand()/(h_t)RAND_MAX;
+  h_t disp = (noise - 0.5) * 2;
+  g[x][y] = base + disp * sqrt(du*du + dv*dv) * ALT_SCALE + skew * SKEW;
 }
 
-void generate_land(grid g) {
-  srand(time(NULL));
+void generate_land(grid g, long seed) {
+  srand(seed);
   rand();
 
-  for (int Dx = SIZE; Dx > 1; Dx /= 2) {
+  generate_land_point(g, 0, 0, 0);
+
+  for (int i = 0; (1 << i) < SIZE; i++) {
+    int Dx = SIZE >> i;
     int dx = Dx/2;
-    for (FOR(x,Dx)) {
-      for (FOR(y,Dx)) {
-	generate_land_point(g, x+dx, y+dx, dx, dx); 
+    int octave = 2*i + 1;
+    for (FOR_V(x,Dx)) {
+      for (FOR_V(y,Dx)) {
+	generate_land_point(g, x+dx, y+dx, octave); 
       }
     }
-    for (FOR(x,Dx)) {
-      for (FOR(y,Dx)) {
-	generate_land_point(g, x+dx, y, dx, 0); 
-	generate_land_point(g, x, y+dx, dx, 0); 
+    octave += 1;
+    for (FOR_V(x,Dx)) {
+      for (FOR_V(y,Dx)) {
+	generate_land_point(g, x+dx, y, octave); 
+	generate_land_point(g, x, y+dx, octave); 
       }
     }
   }
 }
 
 void update_temperature() {
-  for (FOR(x,1)) {
-    for (FOR(y,1)) {
+  for (FOR(x)) {
+    for (FOR(y)) {
       state.temperature[x][y] = (
 				 -(state.land[x][y]+state.water[x][y])*TEMP_ALT/SIZE +
 				 -state.latitude[x][y]*state.latitude[x][y]*LAT_POLE +
@@ -104,18 +130,18 @@ void update_temperature() {
   }  
 }
 
-void init_state() {
-  generate_land(state.land);
-  for (FOR(x,1)) {
-    for (FOR(y,1)) {
-      state.water[x][y] = SEA_LEVEL * SIZE - state.land[x][y];
+void init_state(long seed) {
+  generate_land(state.land, seed);
+  for (FOR(x)) {
+    for (FOR(y)) {
+      state.water[x][y] = - state.land[x][y];
       state.water[x][y] *= state.water[x][y] > 0;
       state.latitude[x][y] = cos(x * M_PI * 2 / SIZE) + cos(y * M_PI * 2 / SIZE);
     }
   }
   update_temperature();
-  for (FOR(x,1)) {
-    for (FOR(y,1)) {
+  for (FOR(x)) {
+    for (FOR(y)) {
       state.vapor[x][y] = equilibrium_vapor(state.temperature[x][y]);
     }
   }
@@ -145,15 +171,15 @@ void teardown_sdl_stuff() {
 }
 
 void flow_water() {
-  for (FOR(x,1)) {
-    for (FOR(y,1)) {
+  for (FOR(x)) {
+    for (FOR(y)) {
       state.tide[x][y] = TIDE_AMP*SIZE * sin((x + t*TIDE_RATE) * M_PI * 2 / SIZE);
     }
   }
 
   // update flow field
-  for (FOR(x,1)) {
-    for (FOR(y,1)) {
+  for (FOR(x)) {
+    for (FOR(y)) {
 
       for (int dx = 0; dx <= 1; dx++) {
 	for (int dy = 0; dy <= 1; dy++) {
@@ -177,8 +203,8 @@ void flow_water() {
   }
 
   // clamp flow
-  for (FOR(x,1)) {
-    for (FOR(y,1)) {
+  for (FOR(x)) {
+    for (FOR(y)) {
       h_t outflow = 0.0;
 
       for (int dx = -1; dx <= 1; dx++) {
@@ -212,8 +238,8 @@ void flow_water() {
   }
 
   // apply flow to calculate new water level
-  for (FOR(x,1)) {
-    for (FOR(y,1)) {
+  for (FOR(x)) {
+    for (FOR(y)) {
       state.xflow[x][y] *= DAMP;
       state.yflow[x][y] *= DAMP;
 
@@ -226,8 +252,8 @@ void flow_water() {
 }
 
 void exchange_vapor() {
-  for (FOR(x,1)) {
-    for (FOR(y,1)) {
+  for (FOR(x)) {
+    for (FOR(y)) {
       h_t eq_vap = equilibrium_vapor(state.temperature[x][y]);
       h_t rain = VAP_EXCHG * (state.vapor[x][y] - eq_vap);
       rain = (rain > state.vapor[x][y]) ? state.vapor[x][y] : rain;
@@ -242,8 +268,8 @@ void exchange_vapor() {
 void diffuse_vapor() {
   memcpy(state.buffer, state.vapor, sizeof(h_t)*SIZE*SIZE);
 
-  for (FOR(x,1)) {
-    for (FOR(y,1)) {
+  for (FOR(x)) {
+    for (FOR(y)) {
 
       state.vapor[x][y] = state.buffer[x][y] * (((h_t)VAP_DIFF - 4) / (h_t)VAP_DIFF);
 
@@ -262,8 +288,8 @@ void diffuse_vapor() {
 
     memcpy(state.buffer, state.vapor, sizeof(h_t)*SIZE*SIZE);
 
-    for (FOR(x,1)) {
-      for (FOR(y,1)) {
+    for (FOR(x)) {
+      for (FOR(y)) {
 	state.vapor[x][y] = WIND_SP * state.buffer[MOD(x+wdir)][y] + (1.0 - WIND_SP) * state.buffer[x][y];
       }
     }
@@ -284,18 +310,18 @@ void update_state() {
 #define PAL_MOMENT 3
 
 void render_state(int pal) {
-  for (FOR(x,1)) {
-    for (FOR(y,1)) {
+  for (FOR(x)) {
+    for (FOR(y)) {
       h_t water_alpha = exp(-state.water[x][y]*35);
       h_t greenery_alpha = exp(-state.water[x][y]*500);
-      h_t scaled_alt = atan(state.land[x][y]*2 / SIZE) / M_PI + 0.5;
+      h_t scaled_alt = atan(state.land[x][y]*2*pow(2.0,SEED_OCTAVES*0.5) / SIZE - 1.0) / M_PI + 0.5;
       h_t light = atan(
-			(state.land[x][y]+state.water[x][y])-
-			(state.land[x][MOD(y-1)]+state.water[x][MOD(y-1)])
-			) / M_PI * 0.9 + 0.5 + 0.1;
-      h_t flow = atan((fabs(state.xflow[x][y]) + fabs(state.yflow[x][y])) * 35) / M_PI;
-      h_t xmoment = atan(state.xflow[x][y] * 50 / (state.water[x][y] + 0.00001)) / M_PI;
-      h_t ymoment = atan(state.yflow[x][y] * 50 / (state.water[x][y] + 0.00001)) / M_PI;
+		       (state.land[x][y]+state.water[x][y])-
+		       (state.land[x][MOD(y-1)]+state.water[x][MOD(y-1)])
+		       ) / M_PI * 0.9 + 0.5 + 0.1;
+      h_t flow = atan((fabs(state.xflow[x][y]) + fabs(state.yflow[x][y])) * 35 / (state.water[x][y] + 0.00001)) / M_PI;
+      h_t xmoment = atan(state.xflow[x][y] * 15 / (state.water[x][y] + 0.00001)) / M_PI;
+      h_t ymoment = atan(state.yflow[x][y] * 15 / (state.water[x][y] + 0.00001)) / M_PI;
 
       unsigned char color[3];
 
@@ -315,7 +341,7 @@ void render_state(int pal) {
 
       case PAL_FLOW:
 	/* blue */  color[0] = (unsigned char)((1 - water_alpha + 0.2*light*water_alpha) * 255);
-	/* green */ color[1] = (unsigned char)(0.2*water_alpha*light * 255);
+	/* green */ color[1] = (unsigned char)(((1 - water_alpha)*scaled_alt + 0.2*water_alpha*light) * 255);
 	/* red */   color[2] = (unsigned char)(((1 - water_alpha)*flow + 0.2*light*water_alpha) * 255);
 	break;
 
@@ -347,14 +373,17 @@ void render_to_screen() {
 
 int main(int argc, char* argv[])
 {
+  long seed = time(NULL);
   int pause = 0;
   int quit = 0;
   int pal = PAL_ALT;
 
-  clock_t ct = clock();
-  init_state();
-
+  if (argc > 1) { seed = atol(argv[1]); }
+  printf("%lu\n", seed);
+  init_state(seed);
   setup_sdl_stuff();
+
+  clock_t ct = clock();
 
   SDL_Event e;
   while (!quit) {
