@@ -60,18 +60,19 @@ h_t equilibrium_vapor(h_t temp) {
 }
 
 #define SEED_OCTAVES 4
-#define BASE_ALT 0.0
+#define BASE_ALT -0.10
 #define SKEW 0.5
 #define ALT_SCALE 1.0
 
 void generate_land_point(grid g, int x, int y, int octave) {
-  h_t base = BASE_ALT;
   h_t skew = 0.0;
 
   octave = (octave <= SEED_OCTAVES) ? SEED_OCTAVES : octave;
 
   int du = SIZE >> ((octave + 1)/2);
   int dv = du * (octave % 2);
+  h_t octave_scale = sqrt(du*du + dv*dv);
+  h_t base = BASE_ALT * ALT_SCALE * octave_scale;
 
   if (octave > SEED_OCTAVES) {
     h_t a = g[MOD(x+du)][MOD(y+dv)];
@@ -90,7 +91,7 @@ void generate_land_point(grid g, int x, int y, int octave) {
 
   h_t noise = (h_t)rand()/(h_t)RAND_MAX;
   h_t disp = (noise - 0.5) * 2;
-  g[x][y] = base + disp * sqrt(du*du + dv*dv) * ALT_SCALE + skew * SKEW;
+  g[x][y] = base + disp * octave_scale * ALT_SCALE + skew * SKEW;
 }
 
 void generate_land(grid g, long seed) {
