@@ -423,7 +423,7 @@ int main(int argc, char* argv[])
 
   int mousex = 0;
   int mousey = 0;
-  int mousebutton = 0;
+  int rightbutton = 0;
 
   if (argc > 1) { seed = atol(argv[1]); }
   printf("%lu\n", seed);
@@ -444,15 +444,29 @@ int main(int argc, char* argv[])
 	break;
 
       case SDL_MOUSEBUTTONDOWN:
-	if (e.button.button == SDL_BUTTON_LEFT) { mousebutton = 1; }
+	switch (e.button.button) {
+
+	case SDL_BUTTON_LEFT:
+	  state.water[MOD(vx+e.button.x/ZOOM)][MOD(vy+e.button.y/ZOOM)] = SIZE;
+	  break;
+
+        case SDL_BUTTON_RIGHT:
+	  rightbutton = 1;
+	  break;
+	}
 	break;
 
       case SDL_MOUSEBUTTONUP:
-	if (e.button.button == SDL_BUTTON_LEFT) { mousebutton = 0; }
+	switch (e.button.button) {
+
+        case SDL_BUTTON_RIGHT:
+	  rightbutton = 0;
+	  break;
+	}
 	break;
 
       case SDL_MOUSEMOTION:
-	if (mousebutton) {
+	if (rightbutton) {
 	  vx = MOD(vx + (mousex - e.motion.x)/ZOOM);
 	  vy = MOD(vy + (mousey - e.motion.y)/ZOOM);
 	}
