@@ -43,17 +43,59 @@ typedef struct {
   grid tide;
   grid xflow;
   grid yflow;
-  grid temperature;
+  grid temp;
   grid latitude;
   grid vapor;
   grid rain;
-  grid buffer;
+  grid buf;
 } state_t;
+
+typedef struct {
+#include "conf_decl.c"
+} conf_t;
 
 long int t = 0;
 int vx = 0;
 int vy = 0;
 state_t state;
+conf_t conf;
+
+void parse_conf_line(const char line[]) {
+  if (line[0] == '#') { return; }
+  char key[256] = { 0 };
+  char val[256] = { 0 };
+
+  int len = strlen(line);
+  char *pos = strchr(line, '=');
+  if (pos == NULL) {
+    printf("Bad conf line: %s", line);
+    exit(1);
+  }
+  strncpy(key, line, pos - line);
+  strncpy(val, pos + 1, line + len - pos);
+
+  if (0) { }
+#include "conf_parse.c"
+  else {
+    printf("Unknown conf key: %s\n", key);
+    exit(1);
+  }
+}
+
+void parse_conf(const char *filename) {
+  char line[256] = { 0 };
+  FILE *fp = fopen(filename, "r");
+  if (fp == NULL) {
+    printf("Unable to read conf file %s\n", filename);
+    exit(1);
+  }
+  while (!feof(fp)) {
+    memset(line, 0, 256);
+    fgets(line, 256, fp);
+    if (strlen(line)) { parse_conf_line(line); }
+  }
+  fclose(fp);
+}
 
 h_t equilibrium_vapor(h_t temp) {
   return VAP_STD * SIZE * exp(VAP_TEMP * temp);
@@ -122,7 +164,7 @@ void generate_land(grid g, long seed) {
 void update_temperature() {
   for (FOR(x)) {
     for (FOR(y)) {
-      state.temperature[x][y] = (
+      state.temp[x][y] = (
 				 -(state.land[x][y]+state.water[x][y])*TEMP_ALT/SIZE +
 				 -state.latitude[x][y]*state.latitude[x][y]*LAT_POLE +
 				 state.latitude[x][y]*sin((double)t * M_PI * 2 / YEAR_LEN)*LAT_TILT
@@ -143,7 +185,7 @@ void init_state(long seed) {
   update_temperature();
   for (FOR(x)) {
     for (FOR(y)) {
-      state.vapor[x][y] = equilibrium_vapor(state.temperature[x][y]);
+      state.vapor[x][y] = equilibrium_vapor(state.temp[x][y]);
     }
   }
 }
@@ -255,7 +297,7 @@ void flow_water() {
 void exchange_vapor() {
   for (FOR(x)) {
     for (FOR(y)) {
-      h_t eq_vap = equilibrium_vapor(state.temperature[x][y]);
+      h_t eq_vap = equilibrium_vapor(state.temp[x][y]);
       h_t rain = VAP_EXCHG * (state.vapor[x][y] - eq_vap);
       rain = (rain > state.vapor[x][y]) ? state.vapor[x][y] : rain;
       rain = (rain < -state.water[x][y]) ? -state.water[x][y] : rain;
@@ -267,17 +309,17 @@ void exchange_vapor() {
 }
 
 void diffuse_vapor() {
-  memcpy(state.buffer, state.vapor, sizeof(h_t)*SIZE*SIZE);
+  memcpy(state.buf, state.vapor, sizeof(h_t)*SIZE*SIZE);
 
   for (FOR(x)) {
     for (FOR(y)) {
 
-      state.vapor[x][y] = state.buffer[x][y] * (((h_t)VAP_DIFF - 4) / (h_t)VAP_DIFF);
+      state.vapor[x][y] = state.buf[x][y] * (((h_t)VAP_DIFF - 4) / (h_t)VAP_DIFF);
 
       for (int dx = -1; dx <= 1; dx++) {
 	for (int dy = -1; dy <= 1; dy++) {
 	  if (!dx != !dy) { //XOR
-	    state.vapor[x][y] += state.buffer[MOD(x+dx)][MOD(y+dy)] / VAP_DIFF;
+	    state.vapor[x][y] += state.buf[MOD(x+dx)][MOD(y+dy)] / VAP_DIFF;
 	  }
 	}
       }
@@ -287,11 +329,11 @@ void diffuse_vapor() {
   if (WIND_SP != 0) {
     int wdir = (WIND_SP > 0) - (WIND_SP < 0);
 
-    memcpy(state.buffer, state.vapor, sizeof(h_t)*SIZE*SIZE);
+    memcpy(state.buf, state.vapor, sizeof(h_t)*SIZE*SIZE);
 
     for (FOR(x)) {
       for (FOR(y)) {
-	state.vapor[x][y] = WIND_SP * state.buffer[MOD(x+wdir)][y] + (1.0 - WIND_SP) * state.buffer[x][y];
+	state.vapor[x][y] = WIND_SP * state.buf[MOD(x+wdir)][y] + (1.0 - WIND_SP) * state.buf[x][y];
       }
     }
   }
@@ -381,6 +423,8 @@ int main(int argc, char* argv[])
 
   if (argc > 1) { seed = atol(argv[1]); }
   printf("%lu\n", seed);
+  parse_conf("default.conf");
+  printf("%i\n", conf.dummy);
   init_state(seed);
   setup_sdl_stuff();
 
