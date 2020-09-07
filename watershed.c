@@ -421,6 +421,10 @@ int main(int argc, char* argv[])
   int quit = 0;
   int pal = PAL_ALT;
 
+  int mousex = 0;
+  int mousey = 0;
+  int mousebutton = 0;
+
   if (argc > 1) { seed = atol(argv[1]); }
   printf("%lu\n", seed);
   parse_conf("default.conf");
@@ -437,6 +441,23 @@ int main(int argc, char* argv[])
 
       case SDL_QUIT:
 	quit = 1;
+	break;
+
+      case SDL_MOUSEBUTTONDOWN:
+	if (e.button.button == SDL_BUTTON_LEFT) { mousebutton = 1; }
+	break;
+
+      case SDL_MOUSEBUTTONUP:
+	if (e.button.button == SDL_BUTTON_LEFT) { mousebutton = 0; }
+	break;
+
+      case SDL_MOUSEMOTION:
+	if (mousebutton) {
+	  vx = MOD(vx + (mousex - e.motion.x)/ZOOM);
+	  vy = MOD(vy + (mousey - e.motion.y)/ZOOM);
+	}
+	mousex = e.motion.x;
+	mousey = e.motion.y;
 	break;
 
       case SDL_KEYDOWN:
