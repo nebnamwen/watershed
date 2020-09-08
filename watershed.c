@@ -54,11 +54,21 @@ typedef struct {
 #include "conf_decl.c"
 } conf_t;
 
+typedef struct {
+  int pal;
+  int vx;
+  int vy;
+  double theta;
+  double phi;
+  double zoom;
+  double hscale;
+  int offset;
+} view_t;
+
 long int t = 0;
-int vx = 0;
-int vy = 0;
 state_t state;
 conf_t conf;
+view_t view;
 
 void parse_conf_line(const char line[]) {
   if (line[0] == '#') { return; }
@@ -194,16 +204,19 @@ SDL_Window *sdl_win;
 SDL_Renderer *sdl_ren;
 SDL_Texture *sdl_tex;
 
-unsigned char pixels[SIZE*ZOOM][SIZE*ZOOM][4];
+unsigned char mappixels[SIZE][SIZE][4];
+unsigned char screenpixels[SIZE*ZOOM][SIZE*ZOOM*2][4];
+unsigned char clickpixels[SIZE*ZOOM*2][SIZE*ZOOM][3];
 
 void setup_sdl_stuff() {
   SDL_Init(SDL_INIT_VIDEO);
 
-  sdl_win = SDL_CreateWindow("Watershed", 0, 0, SIZE*ZOOM, SIZE*ZOOM, 0);
+  sdl_win = SDL_CreateWindow("Watershed", 0, 0, SIZE*ZOOM*2, SIZE*ZOOM, 0);
   sdl_ren = SDL_CreateRenderer(sdl_win, -1, 0);
-  sdl_tex = SDL_CreateTexture(sdl_ren, SDL_PIXELFORMAT_RGB888, SDL_TEXTUREACCESS_STATIC, SIZE*ZOOM, SIZE*ZOOM);
+  sdl_tex = SDL_CreateTexture(sdl_ren, SDL_PIXELFORMAT_RGB888, SDL_TEXTUREACCESS_STATIC, SIZE*ZOOM*2, SIZE*ZOOM);
 
-  memset(pixels, 0, SIZE*ZOOM * SIZE*ZOOM * 4);
+  memset(screenpixels, 0, SIZE*ZOOM*2 * SIZE*ZOOM * 4);
+  memset(clickpixels, 0, SIZE*ZOOM*2 * SIZE*ZOOM * 3);
 }
 
 void teardown_sdl_stuff() {
@@ -352,7 +365,10 @@ void update_state() {
 #define PAL_FLOW 2
 #define PAL_MOMENT 3
 
-void render_state(int pal) {
+void render_state() {
+  memset(screenpixels, 0, SIZE*ZOOM*2 * SIZE*ZOOM * 4);
+  memset(clickpixels, 0, SIZE*ZOOM*2 * SIZE*ZOOM * 3);
+
   for (FOR(x)) {
     for (FOR(y)) {
       h_t water_alpha = exp(-state.water[x][y]*35);
@@ -368,7 +384,7 @@ void render_state(int pal) {
 
       unsigned char color[3];
 
-      switch(pal) {
+      switch(view.pal) {
 
       case PAL_ALT:
 	/* blue */  color[0] = (unsigned char)((1 - water_alpha)*light * 255);
@@ -396,19 +412,78 @@ void render_state(int pal) {
 
       }
 
+      for (int rgb = 0; rgb < 3; rgb++) {
+	mappixels[x][y][rgb] = color[rgb];
+      }
+    }
+  }
+
+  // blit main map
+  for (FOR(x)) {
+    for (FOR(y)) {
       for (int zx = 0; zx < ZOOM; zx++) {
 	for (int zy = 0; zy < ZOOM; zy++) {
 	  for (int rgb = 0; rgb < 3; rgb++) {
-	    pixels[MOD(y-vy)*ZOOM+zy][MOD(x-vx)*ZOOM+zx][rgb] = color[rgb];
+	    screenpixels[MOD(y-view.vy)*ZOOM+zy][MOD(x-view.vx)*ZOOM+zx][rgb] = mappixels[x][y][rgb];
+	  }
+	  clickpixels[MOD(x-view.vx)*ZOOM+zx][MOD(y-view.vy)*ZOOM+zy][0] = 1;
+	  clickpixels[MOD(x-view.vx)*ZOOM+zx][MOD(y-view.vy)*ZOOM+zy][1] = x;
+	  clickpixels[MOD(x-view.vx)*ZOOM+zx][MOD(y-view.vy)*ZOOM+zy][2] = y;
+	}
+      }
+    }
+  }
+
+  // render detail map
+  int detailwidth = SIZE*ZOOM/view.zoom;
+  int sdx = (sin(view.theta) < 0) ? -1 : 1;
+  int sdy = (cos(view.theta) < 0) ? -1 : 1;
+  double sintheta = sin(view.theta);
+  double costheta = cos(view.theta);
+  double sinphi = sin(view.phi);
+  double cosphi = cos(view.phi);
+  double zx = 0.5*(sintheta*sdx + costheta*sdy)*view.zoom;
+  double zy = 0.5*cosphi*(sintheta*sdx + costheta*sdy)*view.zoom;
+
+  for (int dy = -detailwidth*sdy; dy*sdy <= detailwidth; dy += sdy) {
+    for (int dx = -detailwidth*sdx; dx*sdx <= detailwidth; dx += sdx) {
+
+      int x = MOD(view.vx + dx + SIZE/2);
+      int y = MOD(view.vy + dy + SIZE/2);
+      h_t h = state.land[x][y] + state.water[x][y];
+      h_t hdx = state.land[MOD(x+sdx)][y] + state.water[MOD(x+sdx)][y];
+      h_t hdy = state.land[x][MOD(y+sdy)] + state.water[x][MOD(y+sdy)];
+      h_t hd = (hdx < hdy) ? hdx : hdy; 
+
+      int px = SIZE*ZOOM*1.5 + view.zoom*(dx*costheta-dy*sintheta);
+      int py = SIZE*ZOOM*0.5 + view.offset + view.zoom*((dx*sintheta+dy*costheta)*cosphi - h*view.hscale*sinphi);
+
+      double zhy = (h - hd)*view.hscale*sinphi*view.zoom;
+      if (zhy < 0) { zhy = 0; }
+      for (int rx = px - zx; rx <= px + zx + 0.5; rx++) {
+	for (int ry = py - zy; ry <= py + zy + zhy + 1.5; ry++) {
+	  if (rx > SIZE*ZOOM && rx < SIZE*ZOOM*2 && ry >= 0 && ry < SIZE*ZOOM) {
+	    if ((py - ry)*((sdx+sdy)*sintheta + (sdy-sdx)*costheta)/cosphi +
+		(px - rx)*((sdx+sdy)*costheta + (sdx-sdy)*sintheta) <= view.zoom + 0.5 &&
+		(py - ry)*((sdx+sdy)*costheta + (sdx-sdy)*sintheta)/cosphi +
+		(rx - px)*((sdx+sdy)*sintheta + (sdy-sdx)*costheta) <= view.zoom + 0.5) {
+	      for (int rgb = 0; rgb < 3; rgb++) {
+		screenpixels[ry][rx][rgb] = mappixels[x][y][rgb];
+	      }
+	      clickpixels[rx][ry][0] = 1;
+	      clickpixels[rx][ry][1] = x;
+	      clickpixels[rx][ry][2] = y;
+	    }
 	  }
 	}
       }
     }
   }
+
 }
 
 void render_to_screen() {
-  SDL_UpdateTexture(sdl_tex, NULL, pixels, SIZE*ZOOM*4);
+  SDL_UpdateTexture(sdl_tex, NULL, screenpixels, SIZE*ZOOM*2*4);
   SDL_RenderClear(sdl_ren);
   SDL_RenderCopy(sdl_ren, sdl_tex, NULL, NULL);
   SDL_RenderPresent(sdl_ren);
@@ -419,7 +494,13 @@ int main(int argc, char* argv[])
   long seed = time(NULL);
   int pause = 0;
   int quit = 0;
-  int pal = PAL_ALT;
+
+  view.pal = PAL_ALT;
+  view.theta = 0.25;
+  view.phi = 0.75;
+  view.zoom = 4.0;
+  view.offset = 40;
+  view.hscale = 0.5;
 
   int mousex = 0;
   int mousey = 0;
@@ -447,11 +528,14 @@ int main(int argc, char* argv[])
 	switch (e.button.button) {
 
 	case SDL_BUTTON_LEFT:
-	  state.water[MOD(vx+e.button.x/ZOOM)][MOD(vy+e.button.y/ZOOM)] = SIZE;
+	  if (clickpixels[e.button.x][e.button.y][0]) {
+	    state.water[clickpixels[e.button.x][e.button.y][1]][clickpixels[e.button.x][e.button.y][2]] = SIZE;
+	  }
 	  break;
 
         case SDL_BUTTON_RIGHT:
 	  rightbutton = 1;
+	  if (e.button.x > SIZE*ZOOM) { rightbutton = 2; }
 	  break;
 	}
 	break;
@@ -466,12 +550,27 @@ int main(int argc, char* argv[])
 	break;
 
       case SDL_MOUSEMOTION:
-	if (rightbutton) {
-	  vx = MOD(vx + (mousex - e.motion.x)/ZOOM);
-	  vy = MOD(vy + (mousey - e.motion.y)/ZOOM);
+	if (rightbutton == 1) {
+	  view.vx = MOD(view.vx + (mousex - e.motion.x)/ZOOM);
+	  view.vy = MOD(view.vy + (mousey - e.motion.y)/ZOOM);
+	}
+	else if (rightbutton == 2) {
+	  view.theta += (mousex - e.motion.x)*2.0/(SIZE*ZOOM);
+	  if (view.theta < 0) { view.theta += 2*M_PI; }
+	  if (view.theta > 2*M_PI) { view.theta -= 2*M_PI; }
+
+	  view.phi += (mousey - e.motion.y)*2.0/(SIZE*ZOOM);
+	  if (view.phi > 1.5) { view.phi = 1.5; }
+	  if (view.phi < 0.1) { view.phi = 0.1; }
 	}
 	mousex = e.motion.x;
 	mousey = e.motion.y;
+	break;
+
+      case SDL_MOUSEWHEEL:
+	view.zoom *= exp(e.wheel.y * 0.01);
+	if (view.zoom < ZOOM*2) { view.zoom = ZOOM*2; }
+	if (view.zoom > 32) { view.zoom = 32; }
 	break;
 
       case SDL_KEYDOWN:
@@ -487,39 +586,18 @@ int main(int argc, char* argv[])
 
 	// switch palette
 	case SDLK_a:
-	  pal = PAL_ALT;
+	  view.pal = PAL_ALT;
 	  break;
 	case SDLK_s:
-	  pal = PAL_BIOME;
+	  view.pal = PAL_BIOME;
 	  break;
 	case SDLK_d:
-	  pal = PAL_FLOW;
+	  view.pal = PAL_FLOW;
 	  break;
 	case SDLK_f:
-	  pal = PAL_MOMENT;
-	  break;
-
-	case SDLK_SPACE:
-	  state.water[SIZE/2][SIZE/2] = SIZE;
-	  break;
-
-	// scroll
-	case SDLK_UP:
-	  vy = MOD(vy-1);
-	  break;
-	case SDLK_DOWN:
-	  vy = MOD(vy+1);
-	  break;
-	case SDLK_LEFT:
-	  vx = MOD(vx-1);
-	  break;
-	case SDLK_RIGHT:
-	  vx = MOD(vx+1);
+	  view.pal = PAL_MOMENT;
 	  break;
 	}
-	break;
-      default:
-	break;
       }
     }
 
@@ -531,7 +609,7 @@ int main(int argc, char* argv[])
     }
 
     if (t % 1 == 0) {
-      render_state(pal);
+      render_state();
       render_to_screen();
     }
 
