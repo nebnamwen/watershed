@@ -433,7 +433,7 @@ void render_state() {
       }
     }
   }
-
+  
   // render detail map
   int detailwidth = SIZE*ZOOM/view.zoom;
   int sdx = (sin(view.theta) < 0) ? -1 : 1;
@@ -460,26 +460,41 @@ void render_state() {
 
       double zhy = (h - hd)*view.hscale*sinphi*view.zoom;
       if (zhy < 0) { zhy = 0; }
-      for (int rx = px - zx; rx <= px + zx + 0.5; rx++) {
-	for (int ry = py - zy; ry <= py + zy + zhy + 1.5; ry++) {
-	  if (rx > SIZE*ZOOM && rx < SIZE*ZOOM*2 && ry >= 0 && ry < SIZE*ZOOM) {
-	    if ((py - ry)*((sdx+sdy)*sintheta + (sdy-sdx)*costheta)/cosphi +
-		(px - rx)*((sdx+sdy)*costheta + (sdx-sdy)*sintheta) <= view.zoom + 0.5 &&
-		(py - ry)*((sdx+sdy)*costheta + (sdx-sdy)*sintheta)/cosphi +
-		(rx - px)*((sdx+sdy)*sintheta + (sdy-sdx)*costheta) <= view.zoom + 0.5) {
-	      for (int rgb = 0; rgb < 3; rgb++) {
-		screenpixels[ry][rx][rgb] = mappixels[x][y][rgb];
-	      }
-	      clickpixels[rx][ry][0] = 1;
-	      clickpixels[rx][ry][1] = x;
-	      clickpixels[rx][ry][2] = y;
+
+      int from_x = px - zx;
+      int to_x = px + zx + 0.5;
+      int from_y = py - zy;
+      int to_y = py + zy + zhy + 1.5;
+
+      from_x = (from_x < SIZE*ZOOM+1) ? SIZE*ZOOM+1 : from_x;
+      to_x = (to_x >= SIZE*ZOOM*2) ? SIZE*ZOOM*2-1 : to_x;
+      from_y = (from_y < 0) ? 0 : from_y;
+      to_y = (to_y >= SIZE*ZOOM) ? SIZE*ZOOM-1 : to_y;
+
+      for (int rx = from_x; rx <= to_x; rx++) {
+	int cutoff = 0;
+	int sdrx = (px - rx)*sdx;
+	for (int ry = from_y; ry <= to_y; ry++) {
+	  int sdry = (py - ry)*sdy;
+	  if (cutoff ||
+	      ((sdx == sdy) &&
+	       sdry*sintheta/cosphi + sdrx*costheta <= view.zoom*0.5 + 1 &&
+	       sdry*costheta/cosphi - sdrx*sintheta <= view.zoom*0.5 + 1) ||
+	      ((sdx != sdy) &&
+	       sdry*costheta/cosphi + sdrx*sintheta <= view.zoom*0.5 + 1 &&
+	       -sdry*sintheta/cosphi + sdrx*costheta <= view.zoom*0.5 + 1)) {
+	    cutoff = 1;
+	    for (int rgb = 0; rgb < 3; rgb++) {
+	      screenpixels[ry][rx][rgb] = mappixels[x][y][rgb];
 	    }
+	    clickpixels[rx][ry][0] = 1;
+	    clickpixels[rx][ry][1] = x;
+	    clickpixels[rx][ry][2] = y;
 	  }
 	}
       }
     }
   }
-
 }
 
 void render_to_screen() {
@@ -568,7 +583,7 @@ int main(int argc, char* argv[])
 	break;
 
       case SDL_MOUSEWHEEL:
-	view.zoom *= exp(e.wheel.y * 0.01);
+	view.zoom *= exp(e.wheel.y * 0.025);
 	if (view.zoom < ZOOM*2) { view.zoom = ZOOM*2; }
 	if (view.zoom > 32) { view.zoom = 32; }
 	break;
@@ -613,7 +628,10 @@ int main(int argc, char* argv[])
       render_to_screen();
     }
 
-    // printf("%lu\n", (clock() - ct) * 1000 / CLOCKS_PER_SEC);
+    if (0) {
+      printf("%lu\n", (clock() - ct) * 1000 / CLOCKS_PER_SEC);
+    }
+
     ct = clock();
   }
 
