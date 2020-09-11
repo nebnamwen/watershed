@@ -56,6 +56,7 @@ typedef struct {
 
 typedef struct {
   int pal;
+  int skip;
   int vx;
   int vy;
   double theta;
@@ -510,6 +511,7 @@ int main(int argc, char* argv[])
   int pause = 0;
   int quit = 0;
 
+  view.skip = 1;
   view.pal = PAL_ALT;
   view.theta = 0.25;
   view.phi = 0.75;
@@ -612,6 +614,17 @@ int main(int argc, char* argv[])
 	case SDLK_f:
 	  view.pal = PAL_MOMENT;
 	  break;
+
+	// frameskip
+	case SDLK_1:
+	  view.skip = 1;
+	  break;
+	case SDLK_2:
+	  view.skip = 2;
+	  break;
+	case SDLK_3:
+	  view.skip = 4;
+	  break;
 	}
       }
     }
@@ -623,7 +636,7 @@ int main(int argc, char* argv[])
       update_state();
     }
 
-    if (t % 1 == 0) {
+    if (t % view.skip == 0) {
       render_state();
       render_to_screen();
     }
