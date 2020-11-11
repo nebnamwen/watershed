@@ -25,9 +25,6 @@ typedef double h_t;
 #define VAP_TEMP 1.0
 #define VAP_EXCHG 0.075
 
-#define TIDE_AMP 0.01
-#define TIDE_RATE 0.5
-
 typedef h_t grid[SIZE][SIZE];
 
 typedef struct {
@@ -215,7 +212,7 @@ void teardown_sdl_stuff() {
 void flow_water() {
   for (FOR(x)) {
     for (FOR(y)) {
-      state.tide[x][y] = TIDE_AMP*SIZE * sin((x + t*TIDE_RATE) * M_PI * 2 / SIZE);
+      state.tide[x][y] = conf.tide_amp * sin((x * 1.0 / SIZE + (t % conf.tide_period) * 1.0 / conf.tide_period) * 2 * M_PI);
     }
   }
 

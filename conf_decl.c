@@ -6,3 +6,5 @@ double tgen_skew;
 double flow_gravity;
 double flow_clamp;
 double flow_damp;
+double tide_amp;
+int tide_period;
