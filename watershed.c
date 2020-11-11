@@ -68,7 +68,7 @@ conf_t conf;
 view_t view;
 
 void parse_conf_line(const char line[], const char *filename) {
-  if (line[0] == '#') { return; }
+  if (strchr("#\n", line[0]) != NULL) { return; }
   char key[256] = { 0 };
   char val[256] = { 0 };
 
@@ -519,9 +519,11 @@ int main(int argc, char *argv[])
     if (pos == NULL) { parse_conf(arg); }
     else { parse_conf_line(arg, ""); }
   }
+  if (conf.tgen_seed == 0) {
+    conf.tgen_seed = time(NULL);
+    printf("tgen_seed=%lu\n", conf.tgen_seed);
+  }
 
-  if (conf.tgen_seed == 0) { conf.tgen_seed = time(NULL); }
-  printf("%lu\n", conf.tgen_seed);
   init_state(conf.tgen_seed);
   setup_sdl_stuff();
 
