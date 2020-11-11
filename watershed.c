@@ -67,7 +67,7 @@ state_t state;
 conf_t conf;
 view_t view;
 
-void parse_conf_line(const char line[]) {
+void parse_conf_line(const char line[], const char *filename) {
   if (line[0] == '#') { return; }
   char key[256] = { 0 };
   char val[256] = { 0 };
@@ -75,6 +75,7 @@ void parse_conf_line(const char line[]) {
   int len = strlen(line);
   char *pos = strchr(line, '=');
   if (pos == NULL) {
+    if (strlen(filename)) { printf("(%s) ", filename); }
     printf("Bad conf line: %s", line);
     exit(1);
   }
@@ -84,6 +85,7 @@ void parse_conf_line(const char line[]) {
   if (0) { }
 #include "conf_parse.c"
   else {
+    if (strlen(filename)) { printf("(%s) ", filename); }
     printf("Unknown conf key: %s\n", key);
     exit(1);
   }
@@ -96,10 +98,11 @@ void parse_conf(const char *filename) {
     printf("Unable to read conf file %s\n", filename);
     exit(1);
   }
+
   while (!feof(fp)) {
     memset(line, 0, 256);
     fgets(line, 256, fp);
-    if (strlen(line)) { parse_conf_line(line); }
+    if (strlen(line)) { parse_conf_line(line, filename); }
   }
   fclose(fp);
 }
@@ -491,7 +494,7 @@ void render_to_screen() {
   SDL_RenderPresent(sdl_ren);
 }
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
   int pause = 0;
   int quit = 0;
@@ -509,6 +512,14 @@ int main(int argc, char* argv[])
   int rightbutton = 0;
 
   parse_conf("default.conf");
+
+  for (int i = 1; i < argc; i++) {
+    char *arg = argv[i];
+    char *pos = strchr(arg, '=');
+    if (pos == NULL) { parse_conf(arg); }
+    else { parse_conf_line(arg, ""); }
+  }
+
   if (conf.tgen_seed == 0) { conf.tgen_seed = time(NULL); }
   printf("%lu\n", conf.tgen_seed);
   init_state(conf.tgen_seed);
