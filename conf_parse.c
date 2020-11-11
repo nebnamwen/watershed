@@ -6,5 +6,10 @@ else if (strcmp(key,"tgen_skew") == 0) { conf.tgen_skew = atof(val); }
 else if (strcmp(key,"flow_gravity") == 0) { conf.flow_gravity = atof(val); }
 else if (strcmp(key,"flow_clamp") == 0) { conf.flow_clamp = atof(val); }
 else if (strcmp(key,"flow_damp") == 0) { conf.flow_damp = atof(val); }
+else if (strcmp(key,"vap_exc_htemp") == 0) { conf.vap_exc_htemp = atof(val); }
+else if (strcmp(key,"vap_exc_pstd") == 0) { conf.vap_exc_pstd = atof(val); }
+else if (strcmp(key,"vap_exc_rate") == 0) { conf.vap_exc_rate = atof(val); }
+else if (strcmp(key,"vap_flow_diff") == 0) { conf.vap_flow_diff = atof(val); }
+else if (strcmp(key,"vap_flow_wind") == 0) { conf.vap_flow_wind = atof(val); }
 else if (strcmp(key,"tide_amp") == 0) { conf.tide_amp = atof(val); }
 else if (strcmp(key,"tide_period") == 0) { conf.tide_period = atoi(val); }

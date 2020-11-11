@@ -16,15 +16,6 @@ typedef double h_t;
 #define FOR_V(x,dx) int x = 0; x < SIZE; x += dx
 #define FOR(x) FOR_V(x,1)
 
-#define TEMP_ALT 0.95
-
-#define VAP_DIFF 6
-#define WIND_SP 0.05
-
-#define VAP_STD 0.005
-#define VAP_TEMP 1.0
-#define VAP_EXCHG 0.075
-
 typedef h_t grid[SIZE][SIZE];
 
 typedef struct {
@@ -101,7 +92,7 @@ void parse_conf(const char *filename) {
 }
 
 h_t equilibrium_vapor(h_t temp) {
-  return VAP_STD * SIZE * exp(VAP_TEMP * temp);
+  return conf.vap_exc_pstd * exp(conf.vap_exc_htemp * temp);
 }
 
 void generate_land_point(grid g, int x, int y, int octave) {
@@ -162,7 +153,7 @@ void generate_land(grid g, long seed) {
 void update_temperature() {
   for (FOR(x)) {
     for (FOR(y)) {
-      state.temp[x][y] = -(state.land[x][y]+state.water[x][y])*TEMP_ALT/SIZE;
+      state.temp[x][y] = -(state.land[x][y]+state.water[x][y]);
     }
   }  
 }
@@ -294,7 +285,7 @@ void exchange_vapor() {
   for (FOR(x)) {
     for (FOR(y)) {
       h_t eq_vap = equilibrium_vapor(state.temp[x][y]);
-      h_t rain = VAP_EXCHG * (state.vapor[x][y] - eq_vap);
+      h_t rain = conf.vap_exc_rate * (state.vapor[x][y] - eq_vap);
       rain = (rain > state.vapor[x][y]) ? state.vapor[x][y] : rain;
       rain = (rain < -state.water[x][y]) ? -state.water[x][y] : rain;
       state.water[x][y] += rain;
@@ -310,26 +301,27 @@ void diffuse_vapor() {
   for (FOR(x)) {
     for (FOR(y)) {
 
-      state.vapor[x][y] = state.buf[x][y] * (((h_t)VAP_DIFF - 4) / (h_t)VAP_DIFF);
+      state.vapor[x][y] = state.buf[x][y] * (1.0 - conf.vap_flow_diff * 4);
 
       for (int dx = -1; dx <= 1; dx++) {
 	for (int dy = -1; dy <= 1; dy++) {
 	  if (!dx != !dy) { //XOR
-	    state.vapor[x][y] += state.buf[MOD(x+dx)][MOD(y+dy)] / VAP_DIFF;
+	    state.vapor[x][y] += state.buf[MOD(x+dx)][MOD(y+dy)] * conf.vap_flow_diff;
 	  }
 	}
       }
     }
   }
 
-  if (WIND_SP != 0) {
-    int wdir = (WIND_SP > 0) - (WIND_SP < 0);
+  if (conf.vap_flow_wind != 0) {
+    int wdir = (conf.vap_flow_wind > 0) - (conf.vap_flow_wind < 0);
 
     memcpy(state.buf, state.vapor, sizeof(h_t)*SIZE*SIZE);
 
     for (FOR(x)) {
       for (FOR(y)) {
-	state.vapor[x][y] = WIND_SP * state.buf[MOD(x+wdir)][y] + (1.0 - WIND_SP) * state.buf[x][y];
+	state.vapor[x][y] = conf.vap_flow_wind * wdir * state.buf[MOD(x+wdir)][y] +
+	  (1.0 - conf.vap_flow_wind * wdir) * state.buf[x][y];
       }
     }
   }
