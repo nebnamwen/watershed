@@ -1,11 +1,14 @@
 # TERRAIN GENERATION
-long tgen_seed 0
-int tgen_seed_oct 4
-double tgen_hbase -0.1
-double tgen_hscale 1.0
-double tgen_skew 0.5
+long	  tgen_seed	0
+int	  tgen_seed_oct	4
+double	  tgen_hbase	-0.1
+double	  tgen_hscale	1.0
+double	  tgen_skew	0.5
 
 # WATER FLOW
+double	flow_gravity	0.01
+double	flow_clamp	0.15
+double	flow_damp	0.995
 
 # VAPOR EXCHANGE
 

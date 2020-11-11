@@ -16,10 +16,6 @@ typedef double h_t;
 #define FOR_V(x,dx) int x = 0; x < SIZE; x += dx
 #define FOR(x) FOR_V(x,1)
 
-#define G_ALT 1.5
-#define CLAMP 0.15
-#define DAMP 0.995
-
 #define TEMP_ALT 0.95
 
 #define VAP_DIFF 6
@@ -237,7 +233,7 @@ void flow_water() {
 	    int fromx = (dh > 0) ? x : MOD(x+dx);
 	    int fromy = (dh > 0) ? y : MOD(y+dy);
 
-	    h_t dP = (G_ALT / SIZE) * state.water[fromx][fromy];
+	    h_t dP = conf.flow_gravity * state.water[fromx][fromy];
 	    dP = (dP < 0.475) ? dP : 0.475; // 0.5 is the threshold for stability
 
 	    state.xflow[x][y] += dP * dh * dx;
@@ -265,7 +261,7 @@ void flow_water() {
       }
 
       if (outflow > 0) {
-	h_t clamp = state.water[x][y] * CLAMP / outflow;
+	h_t clamp = state.water[x][y] * conf.flow_clamp / outflow;
 	clamp = (clamp < 1.0) ? clamp : 1.0;
 
 	for (int dx = -1; dx <= 1; dx++) {
@@ -286,8 +282,8 @@ void flow_water() {
   // apply flow to calculate new water level
   for (FOR(x)) {
     for (FOR(y)) {
-      state.xflow[x][y] *= DAMP;
-      state.yflow[x][y] *= DAMP;
+      state.xflow[x][y] *= conf.flow_damp;
+      state.yflow[x][y] *= conf.flow_damp;
 
       state.water[x][y] -= (state.xflow[x][y] + state.yflow[x][y]);
       state.water[MOD(x+1)][MOD(y)] += state.xflow[x][y];
