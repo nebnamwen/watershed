@@ -21,9 +21,6 @@ typedef double h_t;
 #define DAMP 0.995
 
 #define TEMP_ALT 0.95
-#define LAT_POLE 0.00
-#define LAT_TILT 0.00
-#define YEAR_LEN 1500
 
 #define VAP_DIFF 6
 #define WIND_SP 0.05
@@ -44,7 +41,6 @@ typedef struct {
   grid xflow;
   grid yflow;
   grid temp;
-  grid latitude;
   grid vapor;
   grid rain;
   grid buf;
@@ -112,22 +108,17 @@ h_t equilibrium_vapor(h_t temp) {
   return VAP_STD * SIZE * exp(VAP_TEMP * temp);
 }
 
-#define SEED_OCTAVES 4
-#define BASE_ALT -0.10
-#define SKEW 0.5
-#define ALT_SCALE 1.0
-
 void generate_land_point(grid g, int x, int y, int octave) {
   h_t skew = 0.0;
 
-  octave = (octave <= SEED_OCTAVES) ? SEED_OCTAVES : octave;
+  octave = (octave <= conf.tgen_seed_oct) ? conf.tgen_seed_oct : octave;
 
   int du = SIZE >> ((octave + 1)/2);
   int dv = du * (octave % 2);
   h_t octave_scale = sqrt(du*du + dv*dv);
-  h_t base = BASE_ALT * ALT_SCALE * octave_scale;
+  h_t base = conf.tgen_hbase * conf.tgen_hscale * octave_scale;
 
-  if (octave > SEED_OCTAVES) {
+  if (octave > conf.tgen_seed_oct) {
     h_t a = g[MOD(x+du)][MOD(y+dv)];
     h_t b = g[MOD(x+du)][MOD(y-dv)];
     h_t c = g[MOD(x-du)][MOD(y-dv)];
@@ -144,7 +135,7 @@ void generate_land_point(grid g, int x, int y, int octave) {
 
   h_t noise = (h_t)rand()/(h_t)RAND_MAX;
   h_t disp = (noise - 0.5) * 2;
-  g[x][y] = base + disp * octave_scale * ALT_SCALE + skew * SKEW;
+  g[x][y] = base + disp * octave_scale * conf.tgen_hscale + skew * conf.tgen_skew;
 }
 
 void generate_land(grid g, long seed) {
@@ -175,11 +166,7 @@ void generate_land(grid g, long seed) {
 void update_temperature() {
   for (FOR(x)) {
     for (FOR(y)) {
-      state.temp[x][y] = (
-				 -(state.land[x][y]+state.water[x][y])*TEMP_ALT/SIZE +
-				 -state.latitude[x][y]*state.latitude[x][y]*LAT_POLE +
-				 state.latitude[x][y]*sin((double)t * M_PI * 2 / YEAR_LEN)*LAT_TILT
-				 );
+      state.temp[x][y] = -(state.land[x][y]+state.water[x][y])*TEMP_ALT/SIZE;
     }
   }  
 }
@@ -190,7 +177,6 @@ void init_state(long seed) {
     for (FOR(y)) {
       state.water[x][y] = - state.land[x][y];
       state.water[x][y] *= state.water[x][y] > 0;
-      state.latitude[x][y] = cos(x * M_PI * 2 / SIZE) + cos(y * M_PI * 2 / SIZE);
     }
   }
   update_temperature();
@@ -374,7 +360,7 @@ void render_state() {
     for (FOR(y)) {
       h_t water_alpha = exp(-state.water[x][y]*35);
       h_t greenery_alpha = exp(-state.water[x][y]*500);
-      h_t scaled_alt = atan(state.land[x][y]*2*pow(2.0,SEED_OCTAVES*0.5) / SIZE - 1.0) / M_PI + 0.5;
+      h_t scaled_alt = atan(state.land[x][y]*2*pow(2.0,conf.tgen_seed_oct*0.5) / SIZE - 1.0) / M_PI + 0.5;
       h_t light = atan(
 		       (state.land[x][y]+state.water[x][y])-
 		       (state.land[x][MOD(y-1)]+state.water[x][MOD(y-1)])
@@ -507,7 +493,6 @@ void render_to_screen() {
 
 int main(int argc, char* argv[])
 {
-  long seed = time(NULL);
   int pause = 0;
   int quit = 0;
 
@@ -523,11 +508,10 @@ int main(int argc, char* argv[])
   int mousey = 0;
   int rightbutton = 0;
 
-  if (argc > 1) { seed = atol(argv[1]); }
-  printf("%lu\n", seed);
   parse_conf("default.conf");
-  printf("%i\n", conf.dummy);
-  init_state(seed);
+  if (conf.tgen_seed == 0) { conf.tgen_seed = time(NULL); }
+  printf("%lu\n", conf.tgen_seed);
+  init_state(conf.tgen_seed);
   setup_sdl_stuff();
 
   clock_t ct = clock();
@@ -630,7 +614,7 @@ int main(int argc, char* argv[])
     }
 
     if (pause) {
-      SDL_Delay(150);
+      SDL_Delay(30);
     }
     else {
       update_state();
