@@ -285,7 +285,8 @@ void exchange_vapor() {
   for (FOR(x)) {
     for (FOR(y)) {
       h_t eq_vap = equilibrium_vapor(state.temp[x][y]);
-      h_t rain = conf.vap_exc_rate * (state.vapor[x][y] - eq_vap);
+      h_t delta = state.vapor[x][y] - eq_vap;
+      h_t rain = delta * (delta > 0 ? conf.vap_exc_cond : conf.vap_exc_evap);
       rain = (rain > state.vapor[x][y]) ? state.vapor[x][y] : rain;
       rain = (rain < -state.water[x][y]) ? -state.water[x][y] : rain;
       state.water[x][y] += rain;
@@ -313,16 +314,22 @@ void diffuse_vapor() {
     }
   }
 
-  if (conf.vap_flow_wind != 0) {
-    int wdir = (conf.vap_flow_wind > 0) - (conf.vap_flow_wind < 0);
+  double wphase = ((t % conf.vap_wind_period) * 1.0 / conf.vap_wind_period) * 2 * M_PI;
+  h_t windx = conf.vap_wind_x0 * (1 + cos(wphase)) * 0.5 + conf.vap_wind_x1 * (1 - cos(wphase)) * 0.5 +
+    (conf.vap_wind_y1 - conf.vap_wind_y0) * 0.5 * sin(wphase) * conf.vap_wind_circ;
+  h_t windy = conf.vap_wind_y0 * (1 + cos(wphase)) * 0.5 + conf.vap_wind_y1 * (1 - cos(wphase)) * 0.5 +
+    (conf.vap_wind_x0 - conf.vap_wind_x1) * 0.5 * sin(wphase) * conf.vap_wind_circ;
 
-    memcpy(state.buf, state.vapor, sizeof(h_t)*SIZE*SIZE);
+  int wxdir = (windx > 0) - (windx < 0);
+  int wydir = (windy > 0) - (windy < 0);
 
-    for (FOR(x)) {
-      for (FOR(y)) {
-	state.vapor[x][y] = conf.vap_flow_wind * wdir * state.buf[MOD(x+wdir)][y] +
-	  (1.0 - conf.vap_flow_wind * wdir) * state.buf[x][y];
-      }
+  memcpy(state.buf, state.vapor, sizeof(h_t)*SIZE*SIZE);
+
+  for (FOR(x)) {
+    for (FOR(y)) {
+      state.vapor[x][y] = (1.0 - windx * wxdir - windy * wydir) * state.buf[x][y] +
+	windx * wxdir * state.buf[MOD(x+wxdir)][y] +
+	windy * wydir * state.buf[x][MOD(y+wydir)];
     }
   }
 }

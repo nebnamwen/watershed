@@ -13,11 +13,19 @@ double	flow_damp	0.995
 # VAPOR EXCHANGE
 double	vap_exc_htemp	0.005
 double	vap_exc_pstd	1.0
-double	vap_exc_rate	0.075	
+double	vap_exc_evap	0.005
+double	vap_exc_cond	0.04
 
 # VAPOR FLOW
 double	vap_flow_diff	0.15
 double	vap_flow_wind	0.05
+
+double	vap_wind_x0	0.0
+double	vap_wind_y0	0.1
+double	vap_wind_x1	-0.0
+double	vap_wind_y1	-0.1
+double	vap_wind_circ	1.0
+int	vap_wind_period	2048
 
 # TIDE
 double	tide_amp	1.0
