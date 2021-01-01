@@ -16,17 +16,21 @@ typedef double h_t;
 #define FOR_V(x,dx) int x = 0; x < SIZE; x += dx
 #define FOR(x) FOR_V(x,1)
 
+#define HEIGHT(x,y) (state.land[x][y] + state.water[x][y] + state.sedim[x][y])
+
 typedef h_t grid[SIZE][SIZE];
 
 typedef struct {
   grid land;
   grid water;
+  grid sedim;
   grid tide;
   grid xflow;
   grid yflow;
   grid temp;
   grid vapor;
   grid rain;
+  grid ero;
   grid buf;
 } state_t;
 
@@ -153,7 +157,7 @@ void generate_land(grid g, long seed) {
 void update_temperature() {
   for (FOR(x)) {
     for (FOR(y)) {
-      state.temp[x][y] = -(state.land[x][y]+state.water[x][y]);
+      state.temp[x][y] = -HEIGHT(x,y);
     }
   }  
 }
@@ -202,8 +206,9 @@ void teardown_sdl_stuff() {
 
 void flow_water() {
   for (FOR(x)) {
+    h_t tide_x = conf.tide_amp * sin((x * 1.0 / SIZE + (t % conf.tide_period) * 1.0 / conf.tide_period) * 2 * M_PI);
     for (FOR(y)) {
-      state.tide[x][y] = conf.tide_amp * sin((x * 1.0 / SIZE + (t % conf.tide_period) * 1.0 / conf.tide_period) * 2 * M_PI);
+      state.tide[x][y] = tide_x;
     }
   }
 
@@ -214,9 +219,7 @@ void flow_water() {
       for (int dx = 0; dx <= 1; dx++) {
 	for (int dy = 0; dy <= 1; dy++) {
 	  if (!dx != !dy) { //XOR
-	    h_t dh =
-	      (state.land[x][y]+state.tide[x][y]+state.water[x][y])-
-	      (state.land[MOD(x+dx)][MOD(y+dy)]+state.tide[MOD(x+dx)][MOD(y+dy)]+state.water[MOD(x+dx)][MOD(y+dy)]);
+	    h_t dh = (HEIGHT(x,y)+state.tide[x][y]) - (HEIGHT(MOD(x+dx),MOD(y+dy))+state.tide[MOD(x+dx)][MOD(y+dy)]);
 
 	    int fromx = (dh > 0) ? x : MOD(x+dx);
 	    int fromy = (dh > 0) ? y : MOD(y+dy);
@@ -250,7 +253,7 @@ void flow_water() {
 
       if (outflow > 0) {
 	h_t clamp = state.water[x][y] * conf.flow_clamp / outflow;
-	clamp = (clamp < 1.0) ? clamp : 1.0;
+	clamp = (clamp < conf.flow_damp) ? clamp : conf.flow_damp;
 
 	for (int dx = -1; dx <= 1; dx++) {
 	  for (int dy = -1; dy <= 1; dy++) {
@@ -266,19 +269,76 @@ void flow_water() {
       }
     }
   }
+}
+
+void flow_advection(grid g) {
+  memcpy(state.buf, g, sizeof(h_t)*SIZE*SIZE);
+
+  for (FOR(x)) {
+    for (FOR(y)) {
+
+      if (state.water[x][y] > 0) {
+
+	for (int dx = -1; dx <= 1; dx++) {
+	  for (int dy = -1; dy <= 1; dy++) {
+	    if (!dx != !dy) { //XOR
+	      int flowx = (dx < 0) ? MOD(x-1) : x;
+	      int flowy = (dy < 0) ? MOD(y-1) : y;
+
+	      h_t flow = (state.xflow[flowx][flowy] * dx > 0) ? state.xflow[flowx][flowy] * dx :
+		(state.yflow[flowx][flowy] * dy > 0) ? state.yflow[flowx][flowy] * dy : 0;
+	      h_t flow_quant = flow * state.buf[x][y] / state.water[x][y];
+
+	      g[x][y] -= flow_quant;
+	      g[MOD(x+dx)][MOD(y+dy)] += flow_quant;
+	    }
+	  }
+	}
+      }
+    }
+  }
+}
+
+void apply_flow() {
+  // apply advection to dissolved materials
+  flow_advection(state.sedim);
 
   // apply flow to calculate new water level
   for (FOR(x)) {
     for (FOR(y)) {
-      state.xflow[x][y] *= conf.flow_damp;
-      state.yflow[x][y] *= conf.flow_damp;
-
       state.water[x][y] -= (state.xflow[x][y] + state.yflow[x][y]);
       state.water[MOD(x+1)][MOD(y)] += state.xflow[x][y];
       state.water[MOD(x)][MOD(y+1)] += state.yflow[x][y];
     }
   }
+}
 
+void exchange_sediment() {
+  for (FOR(x)) {
+    for (FOR(y)) {
+      h_t outflow = 0.0;
+
+      for (int dx = -1; dx <= 1; dx++) {
+	for (int dy = -1; dy <= 1; dy++) {
+	  if (!dx != !dy) { //XOR
+	    int flowx = (dx < 0) ? MOD(x-1) : x;
+	    int flowy = (dy < 0) ? MOD(y-1) : y;
+	    outflow += (state.xflow[flowx][flowy] * dx > 0) ? state.xflow[flowx][flowy] * dx : 0;
+	    outflow += (state.yflow[flowx][flowy] * dy > 0) ? state.yflow[flowx][flowy] * dy : 0;
+	  }
+	}
+      }
+
+      h_t sedim_cap = conf.ero_sedim_cap * outflow; 
+
+      h_t delta = state.sedim[x][y] - sedim_cap;
+      h_t deposit = delta * (delta > 0 ? conf.ero_exc_dep : conf.ero_exc_dis);
+      deposit = (deposit > state.sedim[x][y]) ? state.sedim[x][y] : deposit;
+      state.land[x][y] += deposit;
+      state.sedim[x][y] -= deposit;
+      state.ero[x][y] = deposit;
+    }
+  }
 }
 
 void exchange_vapor() {
@@ -336,6 +396,8 @@ void diffuse_vapor() {
 
 void update_state() {
   flow_water();
+  exchange_sediment();
+  apply_flow();
   update_temperature();
   exchange_vapor();
   diffuse_vapor();
@@ -432,9 +494,9 @@ void render_state() {
 
       int x = MOD(view.vx + dx + SIZE/2);
       int y = MOD(view.vy + dy + SIZE/2);
-      h_t h = state.land[x][y] + state.water[x][y];
-      h_t hdx = state.land[MOD(x+sdx)][y] + state.water[MOD(x+sdx)][y];
-      h_t hdy = state.land[x][MOD(y+sdy)] + state.water[x][MOD(y+sdy)];
+      h_t h = HEIGHT(x,y);
+      h_t hdx = HEIGHT(MOD(x+sdx),y);
+      h_t hdy = HEIGHT(x,MOD(y+sdy));
       h_t hd = (hdx < hdy) ? hdx : hdy; 
 
       int px = SIZE*ZOOM*1.5 + view.zoom*(dx*costheta-dy*sintheta);

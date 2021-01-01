@@ -11,12 +11,14 @@ else if (strcmp(key,"vap_exc_pstd") == 0) { conf.vap_exc_pstd = atof(val); }
 else if (strcmp(key,"vap_exc_evap") == 0) { conf.vap_exc_evap = atof(val); }
 else if (strcmp(key,"vap_exc_cond") == 0) { conf.vap_exc_cond = atof(val); }
 else if (strcmp(key,"vap_flow_diff") == 0) { conf.vap_flow_diff = atof(val); }
-else if (strcmp(key,"vap_flow_wind") == 0) { conf.vap_flow_wind = atof(val); }
 else if (strcmp(key,"vap_wind_x0") == 0) { conf.vap_wind_x0 = atof(val); }
 else if (strcmp(key,"vap_wind_y0") == 0) { conf.vap_wind_y0 = atof(val); }
 else if (strcmp(key,"vap_wind_x1") == 0) { conf.vap_wind_x1 = atof(val); }
 else if (strcmp(key,"vap_wind_y1") == 0) { conf.vap_wind_y1 = atof(val); }
 else if (strcmp(key,"vap_wind_circ") == 0) { conf.vap_wind_circ = atof(val); }
 else if (strcmp(key,"vap_wind_period") == 0) { conf.vap_wind_period = atoi(val); }
+else if (strcmp(key,"ero_sedim_cap") == 0) { conf.ero_sedim_cap = atof(val); }
+else if (strcmp(key,"ero_exc_dis") == 0) { conf.ero_exc_dis = atof(val); }
+else if (strcmp(key,"ero_exc_dep") == 0) { conf.ero_exc_dep = atof(val); }
 else if (strcmp(key,"tide_amp") == 0) { conf.tide_amp = atof(val); }
 else if (strcmp(key,"tide_period") == 0) { conf.tide_period = atoi(val); }
