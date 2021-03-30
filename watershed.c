@@ -415,50 +415,59 @@ void render_state() {
 
   for (FOR(x)) {
     for (FOR(y)) {
-      h_t water_alpha = exp(-state.water[x][y]*35);
-      h_t greenery_alpha = exp(-state.water[x][y]*500);
+
+      h_t water_alpha = 1.0 - exp(-state.water[x][y]*35);
       h_t scaled_alt = atan(state.land[x][y]*2*pow(2.0,conf.tgen_seed_oct*0.5) / SIZE - 1.0) / M_PI + 0.5;
       h_t light = atan(
 		       (state.land[x][y]+state.water[x][y])-
 		       (state.land[x][MOD(y-1)]+state.water[x][MOD(y-1)])
 		       ) / M_PI * 0.9 + 0.5 + 0.1;
-      h_t flow = atan((fabs(state.xflow[x][y]) + fabs(state.yflow[x][y])) * 35 / (state.water[x][y] + 0.00001)) / M_PI;
-      h_t xmoment = atan(state.xflow[x][y] * 15 / (state.water[x][y] + 0.00001)) / M_PI;
-      h_t ymoment = atan(state.yflow[x][y] * 15 / (state.water[x][y] + 0.00001)) / M_PI;
 
-      unsigned char color[3];
+      double red = 0;
+      double green = 0;
+      double blue = 0;
+      double alpha = 1.0;
+
+#define PAL_LAYER(RED,GREEN,BLUE,LIGHT,ALPHA) alpha = (ALPHA);	\
+      red = (1.0 - alpha)*red + alpha*(LIGHT)*(RED);		\
+      green = (1.0 - alpha)*green + alpha*(LIGHT)*(GREEN);	\
+      blue = (1.0 - alpha)*blue + alpha*(LIGHT)*(BLUE);
 
       switch(view.pal) {
 
       case PAL_ALT:
-	/* blue */  color[0] = (unsigned char)((1 - water_alpha)*light * 255);
-	/* green */ color[1] = (unsigned char)((1 - scaled_alt)*water_alpha*light * 255);
-	/* red */   color[2] = (unsigned char)(scaled_alt*water_alpha*light * 255);
+	PAL_LAYER( scaled_alt, 1 - scaled_alt, 0, light, 1.0 );
+	PAL_LAYER( 0, 0, 1.0, light, water_alpha );
 	break;
 
       case PAL_BIOME:
-	/* blue */  color[0] = (unsigned char)((1 - 0.9*water_alpha)*light * 255);
-	/* green */ color[1] = (unsigned char)((1 - 0.8*greenery_alpha)*water_alpha*light * 255);
-	/* red */   color[2] = (unsigned char)(0.45*greenery_alpha*water_alpha*light * 255);
+	PAL_LAYER( 0.25, 0.25, 0.25, light, 1.0 );
+	PAL_LAYER( 0.45, 0.2, 0.1, light, 1.0 - exp(-state.water[x][y]*5000) );
+	PAL_LAYER( 0.75, 0.75, 0, light, 1.0 - exp(-state.water[x][y]*150) );
+	PAL_LAYER( 0, 1.0, 0, light, 1.0 - exp(-state.water[x][y]*55) );
+	PAL_LAYER( 0, 0.75, 0.75, light, 1.0 - exp(-state.water[x][y]*20) );
+	PAL_LAYER( 0, 0, 1.0, light, 1.0 - exp(-state.water[x][y]*5) );
+	PAL_LAYER( 0, 0, 0.5, light, 1.0 - exp(-state.water[x][y]*0.05) );
 	break;
 
       case PAL_FLOW:
-	/* blue */  color[0] = (unsigned char)((1 - water_alpha + 0.2*light*water_alpha) * 255);
-	/* green */ color[1] = (unsigned char)(((1 - water_alpha)*scaled_alt + 0.2*water_alpha*light) * 255);
-	/* red */   color[2] = (unsigned char)(((1 - water_alpha)*flow + 0.2*light*water_alpha) * 255);
+	PAL_LAYER( 0.2, 0.2, 0.2, light, 1.0 );
+	h_t flow = atan((fabs(state.xflow[x][y]) + fabs(state.yflow[x][y])) * 35 / (state.water[x][y] + 0.00001)) / M_PI;
+	PAL_LAYER( flow, scaled_alt, 1.0, 1.0, water_alpha );
 	break;
 
       case PAL_MOMENT:
-	/* blue */  color[0] = (unsigned char)(((1 - water_alpha)*(ymoment + 0.5) + 0.2*light*water_alpha) * 255);
-	/* green */ color[1] = (unsigned char)(((1 - water_alpha)*(xmoment*0.65 - ymoment*0.35 + 0.5) + 0.2*light*water_alpha) * 255);
-	/* red */   color[2] = (unsigned char)(((1 - water_alpha)*(-xmoment*0.65 - ymoment*0.35 + 0.5) + 0.2*light*water_alpha) * 255);
+	PAL_LAYER( 0.2, 0.2, 0.2, light, 1.0 );
+	h_t xmoment = atan(state.xflow[x][y] * 15 / (state.water[x][y] + 0.00001)) / M_PI;
+	h_t ymoment = atan(state.yflow[x][y] * 15 / (state.water[x][y] + 0.00001)) / M_PI;
+	PAL_LAYER( (-xmoment*0.65 - ymoment*0.35 + 0.5), (xmoment*0.65 - ymoment*0.35 + 0.5), (ymoment + 0.5), 1.0, water_alpha );
 	break;
 
       }
 
-      for (int rgb = 0; rgb < 3; rgb++) {
-	mappixels[x][y][rgb] = color[rgb];
-      }
+      /* blue */  mappixels[x][y][0] = (unsigned char)(blue*255);
+      /* green */ mappixels[x][y][1] = (unsigned char)(green*255);
+      /* red */   mappixels[x][y][2] = (unsigned char)(red*255);
     }
   }
 
