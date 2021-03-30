@@ -355,15 +355,11 @@ void render_state() {
     for (FOR(y)) {
 
       h_t water_alpha = 1.0 - exp(-state.water[x][y]*35);
-      h_t greenery_alpha = 1.0 - exp(-state.water[x][y]*500);
       h_t scaled_alt = atan(state.land[x][y]*2*pow(2.0,conf.tgen_seed_oct*0.5) / SIZE - 1.0) / M_PI + 0.5;
       h_t light = atan(
 		       (state.land[x][y]+state.water[x][y])-
 		       (state.land[x][MOD(y-1)]+state.water[x][MOD(y-1)])
 		       ) / M_PI * 0.9 + 0.5 + 0.1;
-      h_t flow = atan((fabs(state.xflow[x][y]) + fabs(state.yflow[x][y])) * 35 / (state.water[x][y] + 0.00001)) / M_PI;
-      h_t xmoment = atan(state.xflow[x][y] * 15 / (state.water[x][y] + 0.00001)) / M_PI;
-      h_t ymoment = atan(state.yflow[x][y] * 15 / (state.water[x][y] + 0.00001)) / M_PI;
 
       double red = 0;
       double green = 0;
@@ -383,18 +379,25 @@ void render_state() {
 	break;
 
       case PAL_BIOME:
-	PAL_LAYER( 0.45, 0.2, 0.1, light, 1.0 );
-	PAL_LAYER( 0, 1.0, 0, light, greenery_alpha );
-	PAL_LAYER( 0, 0, 1.0, light, water_alpha );
+	PAL_LAYER( 0.25, 0.25, 0.25, light, 1.0 );
+	PAL_LAYER( 0.45, 0.2, 0.1, light, 1.0 - exp(-state.water[x][y]*5000) );
+	PAL_LAYER( 0.75, 0.75, 0, light, 1.0 - exp(-state.water[x][y]*150) );
+	PAL_LAYER( 0, 1.0, 0, light, 1.0 - exp(-state.water[x][y]*55) );
+	PAL_LAYER( 0, 0.75, 0.75, light, 1.0 - exp(-state.water[x][y]*20) );
+	PAL_LAYER( 0, 0, 1.0, light, 1.0 - exp(-state.water[x][y]*5) );
+	PAL_LAYER( 0, 0, 0.5, light, 1.0 - exp(-state.water[x][y]*0.05) );
 	break;
 
       case PAL_FLOW:
 	PAL_LAYER( 0.2, 0.2, 0.2, light, 1.0 );
+	h_t flow = atan((fabs(state.xflow[x][y]) + fabs(state.yflow[x][y])) * 35 / (state.water[x][y] + 0.00001)) / M_PI;
 	PAL_LAYER( flow, scaled_alt, 1.0, 1.0, water_alpha );
 	break;
 
       case PAL_MOMENT:
 	PAL_LAYER( 0.2, 0.2, 0.2, light, 1.0 );
+	h_t xmoment = atan(state.xflow[x][y] * 15 / (state.water[x][y] + 0.00001)) / M_PI;
+	h_t ymoment = atan(state.yflow[x][y] * 15 / (state.water[x][y] + 0.00001)) / M_PI;
 	PAL_LAYER( (-xmoment*0.65 - ymoment*0.35 + 0.5), (xmoment*0.65 - ymoment*0.35 + 0.5), (ymoment + 0.5), 1.0, water_alpha );
 	break;
 
