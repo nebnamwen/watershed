@@ -16,7 +16,7 @@ typedef double h_t;
 #define FOR_V(x,dx) int x = 0; x < SIZE; x += dx
 #define FOR(x) FOR_V(x,1)
 
-#define HEIGHT(x,y) (state.land[x][y] + state.water[x][y] + state.sedim[x][y])
+#define HEIGHT(x,y) (state.land[x][y] + state.water[x][y])
 
 typedef h_t grid[SIZE][SIZE];
 
