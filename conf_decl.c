@@ -6,6 +6,7 @@ double tgen_skew;
 double flow_gravity;
 double flow_clamp;
 double flow_damp;
+double ero_coeff;
 double vap_exc_htemp;
 double vap_exc_pstd;
 double vap_exc_evap;

@@ -281,6 +281,35 @@ void flow_water() {
 
 }
 
+void flow_erosion() {
+  memcpy(state.buf, state.land, sizeof(h_t)*SIZE*SIZE);
+
+  for (FOR(x)) {
+    for (FOR(y)) {
+      for (int dx = 0; dx <= 1; dx++) {
+	for (int dy = 0; dy <= 1; dy++) {
+	  if (!dx != !dy) { //XOR
+	    h_t dh = state.buf[x][y] - state.buf[MOD(x+dx)][MOD(y+dy)];
+	    h_t fl = dx * state.xflow[x][y] + dy * state.yflow[x][y];
+
+	    // sign of dh and fl should match
+	    if ((dh > 0) != (fl > 0)) { dh = 0; }
+
+	    if (fl < 0) { fl = -fl; }
+
+	    h_t ero = fl * conf.ero_coeff;
+	    ero = 0.2 * sin(atan(ero * 5)); // clamp
+	    ero = ero * dh;
+
+	    state.land[x][y] -= ero;
+	    state.land[MOD(x+dx)][MOD(y+dy)] += ero;
+	  }
+	}
+      }
+    }
+  }
+}
+
 void exchange_vapor() {
   for (FOR(x)) {
     for (FOR(y)) {
@@ -336,6 +365,7 @@ void diffuse_vapor() {
 
 void update_state() {
   flow_water();
+  flow_erosion();
   update_temperature();
   exchange_vapor();
   diffuse_vapor();
@@ -524,6 +554,8 @@ int main(int argc, char *argv[])
     conf.tgen_seed = time(NULL);
     printf("tgen_seed=%lu\n", conf.tgen_seed);
   }
+
+  printf("ero_coeff=%f\n", conf.ero_coeff);
 
   init_state(conf.tgen_seed);
   setup_sdl_stuff();
