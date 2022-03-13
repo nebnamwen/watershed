@@ -1,3 +1,5 @@
+all: watershed default.conf
+
 watershed: watershed.c conf_decl.c conf_parse.c
 	gcc `sdl2-config --cflags --libs` -o watershed watershed.c
 
