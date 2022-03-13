@@ -222,7 +222,7 @@ void flow_water() {
 	    int fromy = (dh > 0) ? y : MOD(y+dy);
 
 	    h_t dP = conf.flow_gravity * state.water[fromx][fromy];
-	    dP = (dP < 0.475) ? dP : 0.475; // 0.5 is the threshold for stability
+	    dP = (dP < 0.375) ? dP : 0.375; // 0.5 is the threshold for stability
 
 	    state.xflow[x][y] += dP * dh * dx;
 	    state.yflow[x][y] += dP * dh * dy;
@@ -554,8 +554,6 @@ int main(int argc, char *argv[])
     conf.tgen_seed = time(NULL);
     printf("tgen_seed=%lu\n", conf.tgen_seed);
   }
-
-  printf("ero_coeff=%f\n", conf.ero_coeff);
 
   init_state(conf.tgen_seed);
   setup_sdl_stuff();
