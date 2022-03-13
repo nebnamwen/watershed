@@ -113,11 +113,13 @@ void generate_land_point(grid g, int x, int y, int octave) {
 
     base = (a + b + c + d) / 4.0;
     skew = cbrt(
-		pow(a - base, 3) +
-		pow(b - base, 3) +
-		pow(c - base, 3) +
-		pow(d - base, 3)
-		) / 4.0;
+		(
+		 pow(a - base, 3) +
+		 pow(b - base, 3) +
+		 pow(c - base, 3) +
+		 pow(d - base, 3)
+		 ) / 4.0
+		);
   }
 
   h_t noise = (h_t)rand()/(h_t)RAND_MAX;
