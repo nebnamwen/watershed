@@ -12,6 +12,7 @@ double	flow_damp	0.995
 
 #EROSION
 double	ero_coeff	0.2
+double	ero_decay	0.1
 
 # VAPOR EXCHANGE
 double	vap_exc_htemp	0.005

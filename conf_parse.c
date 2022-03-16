@@ -7,6 +7,7 @@ else if (strcmp(key,"flow_gravity") == 0) { conf.flow_gravity = atof(val); }
 else if (strcmp(key,"flow_clamp") == 0) { conf.flow_clamp = atof(val); }
 else if (strcmp(key,"flow_damp") == 0) { conf.flow_damp = atof(val); }
 else if (strcmp(key,"ero_coeff") == 0) { conf.ero_coeff = atof(val); }
+else if (strcmp(key,"ero_decay") == 0) { conf.ero_decay = atof(val); }
 else if (strcmp(key,"vap_exc_htemp") == 0) { conf.vap_exc_htemp = atof(val); }
 else if (strcmp(key,"vap_exc_pstd") == 0) { conf.vap_exc_pstd = atof(val); }
 else if (strcmp(key,"vap_exc_evap") == 0) { conf.vap_exc_evap = atof(val); }

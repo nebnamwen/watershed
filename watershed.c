@@ -303,8 +303,8 @@ void flow_erosion() {
 	    ero = 0.2 * sin(atan(ero * 5)); // clamp
 	    ero = ero * dh;
 
-	    state.land[x][y] -= ero;
-	    state.land[MOD(x+dx)][MOD(y+dy)] += ero;
+	    state.land[x][y] -= ero * (1.0 - conf.ero_decay * (ero < 0));
+	    state.land[MOD(x+dx)][MOD(y+dy)] += ero * (1.0 - conf.ero_decay * (ero > 0));
 	  }
 	}
       }
