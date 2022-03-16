@@ -215,7 +215,7 @@ void flow_water() {
 
       for (int dx = 0; dx <= 1; dx++) {
 	for (int dy = 0; dy <= 1; dy++) {
-	  if (!dx != !dy) { //XOR
+	  if (!dx != !dy) { // XOR
 	    h_t dh =
 	      (state.land[x][y]+state.tide[x][y]+state.water[x][y])-
 	      (state.land[MOD(x+dx)][MOD(y+dy)]+state.tide[MOD(x+dx)][MOD(y+dy)]+state.water[MOD(x+dx)][MOD(y+dy)]);
@@ -224,7 +224,7 @@ void flow_water() {
 	    int fromy = (dh > 0) ? y : MOD(y+dy);
 
 	    h_t dP = conf.flow_gravity * state.water[fromx][fromy];
-	    dP = (dP < 0.375) ? dP : 0.375; // 0.5 is the threshold for stability
+	    dP = 0.375 * sin(atan(dP / 0.375)); // 0.5 is the threshold for stability
 
 	    state.xflow[x][y] += dP * dh * dx;
 	    state.yflow[x][y] += dP * dh * dy;
@@ -241,7 +241,7 @@ void flow_water() {
 
       for (int dx = -1; dx <= 1; dx++) {
 	for (int dy = -1; dy <= 1; dy++) {
-	  if (!dx != !dy) { //XOR
+	  if (!dx != !dy) { // XOR
 	    int flowx = (dx < 0) ? MOD(x-1) : x;
 	    int flowy = (dy < 0) ? MOD(y-1) : y;
 	    outflow += (state.xflow[flowx][flowy] * dx > 0) ? state.xflow[flowx][flowy] * dx : 0;
@@ -252,11 +252,11 @@ void flow_water() {
 
       if (outflow > 0) {
 	h_t clamp = state.water[x][y] * conf.flow_clamp / outflow;
-	clamp = (clamp < 1.0) ? clamp : 1.0;
+	clamp = sin(atan(clamp));
 
 	for (int dx = -1; dx <= 1; dx++) {
 	  for (int dy = -1; dy <= 1; dy++) {
-	    if (!dx != !dy) { //XOR
+	    if (!dx != !dy) { // XOR
 	      int flowx = (dx < 0) ? MOD(x-1) : x;
 	      int flowy = (dy < 0) ? MOD(y-1) : y;
 	      state.xflow[flowx][flowy] *= (state.xflow[flowx][flowy] * dx > 0) ? clamp : 1.0;
@@ -337,7 +337,7 @@ void diffuse_vapor() {
 
       for (int dx = -1; dx <= 1; dx++) {
 	for (int dy = -1; dy <= 1; dy++) {
-	  if (!dx != !dy) { //XOR
+	  if (!dx != !dy) { // XOR
 	    state.vapor[x][y] += state.buf[MOD(x+dx)][MOD(y+dy)] * conf.vap_flow_diff;
 	  }
 	}
@@ -386,17 +386,18 @@ void render_state() {
   for (FOR(x)) {
     for (FOR(y)) {
 
-      h_t water_alpha = 1.0 - exp(-state.water[x][y]*35);
-      h_t scaled_alt = atan(state.land[x][y]*2*pow(2.0,conf.tgen_seed_oct*0.5) / SIZE - 1.0) / M_PI + 0.5;
-      h_t light = atan(
-		       (state.land[x][y]+state.water[x][y])-
-		       (state.land[x][MOD(y-1)]+state.water[x][MOD(y-1)])
-		       ) / M_PI * 0.9 + 0.5 + 0.1;
+      h_t scaled_alt = sin(atan(state.land[x][y]*pow(2.0,conf.tgen_seed_oct*0.5) * 2 / SIZE - 1.0)) / 2 + 0.5;
+      h_t light = sin(atan((
+			    (state.land[x][y]+state.water[x][y])-
+			    (state.land[x][MOD(y-1)]+state.water[x][MOD(y-1)])
+			    )/2)) * 0.45 + 0.5 + 0.1;
 
       double red = 0;
       double green = 0;
       double blue = 0;
       double alpha = 1.0;
+
+#define WATER_ALPHA(SCALE) 1.0 - exp(-state.water[x][y]*SCALE)
 
 #define PAL_LAYER(RED,GREEN,BLUE,LIGHT,ALPHA) alpha = (ALPHA);	\
       red = (1.0 - alpha)*red + alpha*(LIGHT)*(RED);		\
@@ -407,30 +408,30 @@ void render_state() {
 
       case PAL_ALT:
 	PAL_LAYER( scaled_alt, 1 - scaled_alt, 0, light, 1.0 );
-	PAL_LAYER( 0, 0, 1.0, light, water_alpha );
+	PAL_LAYER( 0, 0, 1.0, light, WATER_ALPHA(10) );
 	break;
 
       case PAL_BIOME:
 	PAL_LAYER( 0.25, 0.25, 0.25, light, 1.0 );
-	PAL_LAYER( 0.45, 0.2, 0.1, light, 1.0 - exp(-state.water[x][y]*5000) );
-	PAL_LAYER( 0.75, 0.75, 0, light, 1.0 - exp(-state.water[x][y]*150) );
-	PAL_LAYER( 0, 1.0, 0, light, 1.0 - exp(-state.water[x][y]*55) );
-	PAL_LAYER( 0, 0.75, 0.75, light, 1.0 - exp(-state.water[x][y]*20) );
-	PAL_LAYER( 0, 0, 1.0, light, 1.0 - exp(-state.water[x][y]*5) );
-	PAL_LAYER( 0, 0, 0.5, light, 1.0 - exp(-state.water[x][y]*0.05) );
+	PAL_LAYER( 0.45, 0.2, 0.1, light, WATER_ALPHA(5000) );
+	PAL_LAYER( 0.75, 0.75, 0, light, WATER_ALPHA(150) );
+	PAL_LAYER( 0, 1.0, 0, light, WATER_ALPHA(55) );
+	PAL_LAYER( 0, 0.75, 0.75, light, WATER_ALPHA(20) );
+	PAL_LAYER( 0, 0, 1.0, light, WATER_ALPHA(5) );
+	PAL_LAYER( 0, 0, 0.5, light, WATER_ALPHA(0.05) );
 	break;
 
       case PAL_FLOW:
 	PAL_LAYER( 0.2, 0.2, 0.2, light, 1.0 );
-	h_t flow = atan((fabs(state.xflow[x][y]) + fabs(state.yflow[x][y])) * 35 / (state.water[x][y] + 0.00001)) / M_PI;
-	PAL_LAYER( flow, scaled_alt, 1.0, 1.0, water_alpha );
+	h_t flow = sin(atan((fabs(state.xflow[x][y]) + fabs(state.yflow[x][y])) * 15 / (state.water[x][y] + 0.00001))) / 2;
+	PAL_LAYER( flow, scaled_alt, 1.0, 1.0, WATER_ALPHA(10) );
 	break;
 
       case PAL_MOMENT:
 	PAL_LAYER( 0.2, 0.2, 0.2, light, 1.0 );
-	h_t xmoment = atan(state.xflow[x][y] * 15 / (state.water[x][y] + 0.00001)) / M_PI;
-	h_t ymoment = atan(state.yflow[x][y] * 15 / (state.water[x][y] + 0.00001)) / M_PI;
-	PAL_LAYER( (-xmoment*0.65 - ymoment*0.35 + 0.5), (xmoment*0.65 - ymoment*0.35 + 0.5), (ymoment + 0.5), 1.0, water_alpha );
+	h_t xmoment = sin(atan(state.xflow[x][y] * 15 / (state.water[x][y] + 0.00001)));
+	h_t ymoment = sin(atan(state.yflow[x][y] * 15 / (state.water[x][y] + 0.00001)));
+	PAL_LAYER( (-xmoment*0.33 - ymoment*0.17 + 0.5), (xmoment*0.33 - ymoment*0.17 + 0.5), (ymoment*0.5 + 0.5), 1.0, WATER_ALPHA(10) );
 	break;
 
       }
