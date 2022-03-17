@@ -252,7 +252,7 @@ void flow_water() {
 
       if (outflow > 0) {
 	h_t clamp = state.water[x][y] * conf.flow_clamp / outflow;
-	clamp = sin(atan(clamp));
+	clamp = (clamp > 1.0) ? 1.0 : clamp;
 
 	for (int dx = -1; dx <= 1; dx++) {
 	  for (int dy = -1; dy <= 1; dy++) {
