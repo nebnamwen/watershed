@@ -547,7 +547,10 @@ int main(int argc, char *argv[])
 
 	case SDL_BUTTON_LEFT:
 	  if (clickpixels[e.button.x][e.button.y][0]) {
-	    state.water[clickpixels[e.button.x][e.button.y][1]][clickpixels[e.button.x][e.button.y][2]] = SIZE;
+	    // state.water[clickpixels[e.button.x][e.button.y][1]][clickpixels[e.button.x][e.button.y][2]] = SIZE;
+	    int cx = clickpixels[e.button.x][e.button.y][1];
+	    int cy = clickpixels[e.button.x][e.button.y][2];	    
+	    printf("[%d,%d] land: %.2f; water: %.3f, xflow: %.3f; yflow: %.3f; vapor: %.3f\n", cx, cy, state.land[cx][cy], state.water[cx][cy], state.xflow[cx][cy], state.yflow[cx][cy], state.vapor[cx][cy]);
 	  }
 	  break;
 
