@@ -7,6 +7,7 @@ double flow_gravity;
 double flow_clamp;
 double flow_damp;
 double ero_coeff;
+double ero_layer;
 double ero_decay;
 double vap_exc_htemp;
 double vap_exc_pstd;
