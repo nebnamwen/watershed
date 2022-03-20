@@ -39,6 +39,7 @@ typedef struct {
   int skip;
   int vx;
   int vy;
+  int floor;
   double theta;
   double phi;
   double zoom;
@@ -358,8 +359,8 @@ void render_state() {
 
       h_t scaled_alt = sin(atan(state.land[x][y]*pow(2.0,conf.tgen_seed_oct*0.5) * 2 / SIZE - 1.0)) / 2 + 0.5;
       h_t light = sin(atan((
-			    (state.land[x][y]+state.water[x][y])-
-			    (state.land[x][MOD(y-1)]+state.water[x][MOD(y-1)])
+			    (state.land[x][y]+state.water[x][y]*!view.floor)-
+			    (state.land[x][MOD(y-1)]+state.water[x][MOD(y-1)]*!view.floor)
 			    )/2)) * 0.45 + 0.5 + 0.1;
 
       double red = 0;
@@ -444,9 +445,9 @@ void render_state() {
 
       int x = MOD(view.vx + dx + SIZE/2);
       int y = MOD(view.vy + dy + SIZE/2);
-      h_t h = state.land[x][y] + state.water[x][y];
-      h_t hdx = state.land[MOD(x+sdx)][y] + state.water[MOD(x+sdx)][y];
-      h_t hdy = state.land[x][MOD(y+sdy)] + state.water[x][MOD(y+sdy)];
+      h_t h = state.land[x][y] + state.water[x][y]*!view.floor;
+      h_t hdx = state.land[MOD(x+sdx)][y] + state.water[MOD(x+sdx)][y]*!view.floor;
+      h_t hdy = state.land[x][MOD(y+sdy)] + state.water[x][MOD(y+sdy)]*!view.floor;
       h_t hd = (hdx < hdy) ? hdx : hdy; 
 
       int px = SIZE*ZOOM*1.5 + view.zoom*(dx*costheta-dy*sintheta);
@@ -505,6 +506,7 @@ int main(int argc, char *argv[])
 
   view.skip = 1;
   view.pal = PAL_ALT;
+  view.floor = 0;
   view.theta = 0.25;
   view.phi = 0.75;
   view.zoom = 4.0;
@@ -617,6 +619,10 @@ int main(int argc, char *argv[])
 	  break;
 	case SDLK_f:
 	  view.pal = PAL_MOMENT;
+	  break;
+
+	case SDLK_SPACE:
+	  view.floor = !view.floor;
 	  break;
 
 	// frameskip
