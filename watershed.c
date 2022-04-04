@@ -304,7 +304,7 @@ void flow_erosion() {
 
 	    if (fl < 0) { fl = -fl; }
 
-	    h_t ero = fl * dh * conf.ero_coeff / sqrt(from_water*from_water + conf.ero_layer*conf.ero_layer);
+	    h_t ero = fl * dh * conf.ero_coeff * conf.ero_layer / sqrt(from_water*from_water + conf.ero_layer*conf.ero_layer);
 
 	    state.land[x][y] -= ero * (1.0 - conf.ero_decay * (ero < 0));
 	    state.land[MOD(x+dx)][MOD(y+dy)] += ero * (1.0 - conf.ero_decay * (ero > 0));
