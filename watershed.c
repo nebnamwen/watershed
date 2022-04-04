@@ -225,7 +225,8 @@ void flow_water() {
 	    int fromy = (dh > 0) ? y : MOD(y+dy);
 
 	    h_t dP = conf.flow_gravity * state.water[fromx][fromy];
-	    dP = 0.375 * sin(atan(dP / 0.375)); // 0.5 is the threshold for stability
+	    // 0.5 is the threshold for stability
+	    dP = conf.flow_dp_ceil * sin(atan(dP / conf.flow_dp_ceil));
 
 	    state.xflow[x][y] += dP * dh * dx;
 	    state.yflow[x][y] += dP * dh * dy;

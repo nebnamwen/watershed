@@ -6,6 +6,7 @@ else if (strcmp(key,"tgen_skew") == 0) { conf.tgen_skew = atof(val); }
 else if (strcmp(key,"flow_gravity") == 0) { conf.flow_gravity = atof(val); }
 else if (strcmp(key,"flow_clamp") == 0) { conf.flow_clamp = atof(val); }
 else if (strcmp(key,"flow_damp") == 0) { conf.flow_damp = atof(val); }
+else if (strcmp(key,"flow_dp_ceil") == 0) { conf.flow_dp_ceil = atof(val); }
 else if (strcmp(key,"ero_coeff") == 0) { conf.ero_coeff = atof(val); }
 else if (strcmp(key,"ero_layer") == 0) { conf.ero_layer = atof(val); }
 else if (strcmp(key,"ero_decay") == 0) { conf.ero_decay = atof(val); }
